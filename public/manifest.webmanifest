@@ -1,0 +1,17 @@
+{
+  "name": "猫咪小家",
+  "short_name": "猫咪小家",
+  "description": "两个人和五只猫咪的共享聊天空间",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#fbf8f3",
+  "theme_color": "#fbf8f3",
+  "icons": [
+    {
+      "src": "/icons/icon.svg",
+      "sizes": "any",
+      "type": "image/svg+xml",
+      "purpose": "any maskable"
+    }
+  ]
+}

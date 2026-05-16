@@ -1,0 +1,74 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "sqlite"
+  url      = env("DATABASE_URL")
+}
+
+model User {
+  id        String    @id @default(cuid())
+  username  String    @unique
+  name      String
+  password  String
+  createdAt DateTime  @default(now())
+  messages  Message[]
+  nicknames CatUserName[]
+}
+
+model Cat {
+  id          String        @id @default(cuid())
+  name        String        @unique
+  avatarUrl   String
+  personality String
+  tone        String
+  backstory   String
+  isDefault   Boolean       @default(false)
+  createdAt   DateTime      @default(now())
+  updatedAt   DateTime      @updatedAt
+  nicknames   CatUserName[]
+  messages    Message[]
+  memory      CatMemory?
+}
+
+model CatUserName {
+  id        String   @id @default(cuid())
+  catId     String
+  userId    String
+  nickname  String
+  cat       Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  updatedAt DateTime @updatedAt
+
+  @@unique([catId, userId])
+}
+
+model Message {
+  id        String      @id @default(cuid())
+  catId     String
+  userId    String?
+  role      String
+  content   String
+  createdAt DateTime    @default(now())
+  cat       Cat         @relation(fields: [catId], references: [id], onDelete: Cascade)
+  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+
+  @@index([catId, createdAt])
+}
+
+model CatMemory {
+  id           String   @id @default(cuid())
+  catId        String   @unique
+  summary      String   @default("")
+  relationship String   @default("")
+  updatedAt    DateTime @updatedAt
+  cat          Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
+}
+
+model AppSetting {
+  id        String   @id @default(cuid())
+  key       String   @unique
+  value     String
+  updatedAt DateTime @updatedAt
+}
