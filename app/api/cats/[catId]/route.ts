@@ -26,7 +26,7 @@ export async function PATCH(request: Request, { params }: Params) {
         backstory: body.backstory?.trim(),
       },
       include: {
-        nicknames: { include: { user: { select: { id: true, name: true } } } },
+        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
         memory: true,
       },
     });
@@ -61,11 +61,26 @@ export async function DELETE(request: Request, { params }: Params) {
       return NextResponse.json({ error: "确认名称不匹配，未删除猫咪" }, { status: 400 });
     }
 
+    const [momentImages, messageImages] = await Promise.all([
+      prisma.catMoment.findMany({ where: { catId }, select: { imageUrl: true } }),
+      prisma.message.findMany({ where: { catId, imageUrl: { not: null } }, select: { imageUrl: true } }),
+    ]);
+
     await prisma.cat.delete({ where: { id: catId } });
 
     if (cat.avatarUrl.startsWith("/uploads/cats/")) {
       await unlink(path.join(process.cwd(), "public", cat.avatarUrl)).catch(() => {});
     }
+
+    const uploadedImages = new Set(
+      [...momentImages, ...messageImages]
+        .map((item) => item.imageUrl)
+        .filter((imageUrl): imageUrl is string => Boolean(imageUrl && imageUrl.startsWith("/uploads/moments/"))),
+    );
+
+    await Promise.all(
+      Array.from(uploadedImages).map((imagePath) => unlink(path.join(process.cwd(), "public", imagePath)).catch(() => {})),
+    );
 
     return NextResponse.json({ deletedCatId: catId });
   } catch (error) {

@@ -1,10 +1,23 @@
 import { PrismaClient } from "@prisma/client";
+import { hashPassword } from "@/lib/password";
 
 const prisma = new PrismaClient();
 
 const users = [
-  { username: "user1", name: "小鱼", password: "cat123" },
-  { username: "user2", name: "小满", password: "cat123" },
+  {
+    id: "default-user-1",
+    username: "user1",
+    name: "小鱼",
+    bio: "偏爱温柔系猫咪，喜欢在睡前来小家说说今天。",
+    password: "cat123",
+  },
+  {
+    id: "default-user-2",
+    username: "user2",
+    name: "小满",
+    bio: "更喜欢活泼和吐槽型小猫，常把日常趣事带回来分享。",
+    password: "cat123",
+  },
 ];
 
 const cats = [
@@ -45,16 +58,37 @@ const cats = [
   },
 ];
 
+async function migrateDefaultUserId(user: (typeof users)[number]) {
+  const [existingById, existingByUsername] = await Promise.all([
+    prisma.user.findUnique({ where: { id: user.id } }),
+    prisma.user.findUnique({ where: { username: user.username } }),
+  ]);
+
+  if (!existingByUsername || existingByUsername.id === user.id || existingById) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe(
+    `UPDATE "User" SET "id" = ? WHERE "id" = ?`,
+    user.id,
+    existingByUsername.id,
+  );
+}
+
 async function main() {
   for (const user of users) {
+    await migrateDefaultUserId(user);
+    const hashedPassword = await hashPassword(user.password);
     await prisma.user.upsert({
-      where: { username: user.username },
-      update: user,
-      create: user,
+      where: { id: user.id },
+      update: { ...user, password: hashedPassword },
+      create: { ...user, password: hashedPassword },
     });
   }
 
-  const dbUsers = await prisma.user.findMany();
+  const dbUsers = await prisma.user.findMany({
+    where: { id: { in: users.map((user) => user.id) } },
+  });
 
   for (const cat of cats) {
     const dbCat = await prisma.cat.upsert({
@@ -81,6 +115,9 @@ async function main() {
           catId: dbCat.id,
           userId: user.id,
           nickname: user.name,
+          preference: "喜欢自然、贴近生活的回应。",
+          memorySummary: "",
+          relationship: `正在和${user.name}慢慢熟悉中。`,
         },
       });
     }

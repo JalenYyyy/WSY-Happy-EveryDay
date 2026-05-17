@@ -8,18 +8,20 @@ datasource db {
 }
 
 model User {
-  id        String    @id @default(cuid())
-  username  String    @unique
+  id        String        @id @default(cuid())
+  username  String        @unique(map: "sqlite_autoindex_User_2")
   name      String
+  avatarUrl String?
+  bio       String        @default("")
   password  String
-  createdAt DateTime  @default(now())
-  messages  Message[]
+  createdAt DateTime      @default(now())
   nicknames CatUserName[]
+  messages  Message[]
 }
 
 model Cat {
   id          String        @id @default(cuid())
-  name        String        @unique
+  name        String        @unique(map: "sqlite_autoindex_Cat_2")
   avatarUrl   String
   personality String
   tone        String
@@ -27,39 +29,56 @@ model Cat {
   isDefault   Boolean       @default(false)
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
+  memory      CatMemory?
   nicknames   CatUserName[]
   messages    Message[]
-  memory      CatMemory?
+  moments     CatMoment[]
 }
 
 model CatUserName {
-  id        String   @id @default(cuid())
-  catId     String
-  userId    String
-  nickname  String
-  cat       Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
-  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
-  updatedAt DateTime @updatedAt
+  id            String   @id @default(cuid())
+  catId         String
+  userId        String
+  nickname      String
+  preference    String   @default("")
+  memorySummary String   @default("")
+  relationship  String   @default("")
+  updatedAt     DateTime @updatedAt
+  user          User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  cat           Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
 
   @@unique([catId, userId])
 }
 
 model Message {
-  id        String      @id @default(cuid())
+  id          String   @id @default(cuid())
+  catId       String
+  userId      String?
+  role        String
+  messageType String   @default("TEXT")
+  content     String
+  imageUrl    String?
+  createdAt   DateTime @default(now())
+  user        User?    @relation(fields: [userId], references: [id])
+  cat         Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
+
+  @@index([catId, createdAt])
+}
+
+model CatMoment {
+  id        String   @id @default(cuid())
   catId     String
-  userId    String?
-  role      String
-  content   String
-  createdAt DateTime    @default(now())
-  cat       Cat         @relation(fields: [catId], references: [id], onDelete: Cascade)
-  user      User?       @relation(fields: [userId], references: [id], onDelete: SetNull)
+  imageUrl  String
+  caption   String
+  createdAt DateTime @default(now())
+  cat       Cat      @relation(fields: [catId], references: [id], onDelete: Cascade)
 
   @@index([catId, createdAt])
 }
 
 model CatMemory {
   id           String   @id @default(cuid())
-  catId        String   @unique
+  catId        String   @unique(map: "sqlite_autoindex_CatMemory_2")
   summary      String   @default("")
   relationship String   @default("")
   updatedAt    DateTime @updatedAt
@@ -68,7 +87,7 @@ model CatMemory {
 
 model AppSetting {
   id        String   @id @default(cuid())
-  key       String   @unique
+  key       String   @unique(map: "sqlite_autoindex_AppSetting_2")
   value     String
   updatedAt DateTime @updatedAt
 }

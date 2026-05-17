@@ -1,9 +1,16 @@
 import { NextResponse } from "next/server";
+import { mkdir, writeFile } from "fs/promises";
+import path from "path";
 import { requireApiUser } from "@/lib/auth";
+import { allowedImageTypes, detectImageMimeType, getImageExtension } from "@/lib/image-upload";
 import { buildMemorySummary, chatCompletion } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ catId: string }> };
+
+function fileToDataUrl(mimeType: string, buffer: Buffer) {
+  return `data:${mimeType};base64,${buffer.toString("base64")}`;
+}
 
 export async function GET(_request: Request, { params }: Params) {
   try {
@@ -25,10 +32,45 @@ export async function POST(request: Request, { params }: Params) {
   try {
     const user = await requireApiUser();
     const { catId } = await params;
-    const { content } = (await request.json()) as { content?: string };
-    const text = content?.trim();
+    const contentType = request.headers.get("content-type") || "";
+    let text = "";
+    let imageUrl: string | undefined;
+    let imageDataUrl: string | undefined;
 
-    if (!text) {
+    if (contentType.includes("multipart/form-data")) {
+      const formData = await request.formData();
+      const file = formData.get("image");
+      const caption = String(formData.get("content") || "").trim();
+
+      if (!(file instanceof File)) {
+        return NextResponse.json({ error: "请上传 png、jpg、webp 或 gif 图片" }, { status: 400 });
+      }
+
+      if (file.size > 4 * 1024 * 1024) {
+        return NextResponse.json({ error: "图片不能超过 4MB" }, { status: 400 });
+      }
+
+      const buffer = Buffer.from(await file.arrayBuffer());
+      const mimeType = detectImageMimeType(buffer);
+      if (!mimeType || !allowedImageTypes.has(mimeType)) {
+        return NextResponse.json({ error: "请上传 png、jpg、webp 或 gif 图片" }, { status: 400 });
+      }
+
+      const ext = getImageExtension(mimeType);
+      const filename = `${catId}-${Date.now()}.${ext}`;
+      const uploadDir = path.join(process.cwd(), "public", "uploads", "moments");
+      await mkdir(uploadDir, { recursive: true });
+      await writeFile(path.join(uploadDir, filename), buffer);
+
+      imageUrl = `/uploads/moments/${filename}`;
+      imageDataUrl = fileToDataUrl(mimeType, buffer);
+      text = caption || "请看看这张图片里猫咪现在是什么心情，也按你的性格回复我。";
+    } else {
+      const body = (await request.json()) as { content?: string };
+      text = body.content?.trim() || "";
+    }
+
+    if (!text && !imageUrl) {
       return NextResponse.json({ error: "消息不能为空" }, { status: 400 });
     }
 
@@ -36,7 +78,7 @@ export async function POST(request: Request, { params }: Params) {
       where: { id: catId },
       include: {
         memory: true,
-        nicknames: { include: { user: { select: { id: true, name: true } } } },
+        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
       },
     });
 
@@ -45,7 +87,14 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const userMessage = await prisma.message.create({
-      data: { catId, userId: user.id, role: "USER", content: text },
+      data: {
+        catId,
+        userId: user.id,
+        role: "USER",
+        content: text,
+        messageType: imageUrl ? "IMAGE" : "TEXT",
+        imageUrl,
+      },
       include: { user: { select: { id: true, name: true } } },
     });
 
@@ -60,6 +109,7 @@ export async function POST(request: Request, { params }: Params) {
       currentUser: user,
       recentMessages: recentMessages.reverse(),
       userMessage: text,
+      imageDataUrl,
     });
 
     const catMessage = await prisma.message.create({
@@ -67,16 +117,43 @@ export async function POST(request: Request, { params }: Params) {
       include: { user: { select: { id: true, name: true } } },
     });
 
+    if (imageUrl) {
+      await prisma.catMoment.create({
+        data: {
+          catId,
+          imageUrl,
+          caption: `${completion.content}\n${new Date().toLocaleString("zh-CN")}`,
+        },
+      });
+    }
+
     await prisma.catMemory.upsert({
       where: { catId },
       update: {
         summary: buildMemorySummary(cat.memory?.summary || "", user.name, text),
-        relationship: `和${user.name}持续聊天中，关系更熟悉了。`,
+        relationship: `最近常和${user.name}一起聊天，小家气氛更熟悉了。`,
       },
       create: {
         catId,
         summary: buildMemorySummary("", user.name, text),
-        relationship: `和${user.name}持续聊天中，关系更熟悉了。`,
+        relationship: `最近常和${user.name}一起聊天，小家气氛更熟悉了。`,
+      },
+    });
+
+    const currentProfile = cat.nicknames.find((item) => item.userId === user.id);
+    await prisma.catUserName.upsert({
+      where: { catId_userId: { catId, userId: user.id } },
+      update: {
+        memorySummary: buildMemorySummary(currentProfile?.memorySummary || "", user.name, imageUrl ? `[图片] ${text}` : text),
+        relationship: `${cat.name}越来越熟悉${user.name}的节奏了。`,
+      },
+      create: {
+        catId,
+        userId: user.id,
+        nickname: user.name,
+        preference: "",
+        memorySummary: buildMemorySummary("", user.name, imageUrl ? `[图片] ${text}` : text),
+        relationship: `${cat.name}正在慢慢认识${user.name}。`,
       },
     });
 

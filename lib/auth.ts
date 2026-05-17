@@ -6,7 +6,12 @@ import { prisma } from "@/lib/prisma";
 const SESSION_COOKIE = "cat_session";
 
 function getSecret() {
-  return process.env.APP_SESSION_SECRET || "local-dev-cat-session-secret";
+  const secret = process.env.APP_SESSION_SECRET;
+  if (secret) return secret;
+  if (process.env.NODE_ENV === "production") {
+    throw new Error("APP_SESSION_SECRET is required in production");
+  }
+  return "local-dev-cat-session-secret";
 }
 
 function sign(payload: string) {
@@ -44,7 +49,7 @@ export async function getCurrentUser() {
 
   return prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, username: true, name: true },
+    select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
   });
 }
 

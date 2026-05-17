@@ -6,24 +6,32 @@ type Params = { params: Promise<{ catId: string }> };
 
 export async function PATCH(request: Request, { params }: Params) {
   try {
-    await requireApiUser();
+    const currentUser = await requireApiUser();
     const { catId } = await params;
-    const body = (await request.json()) as { nicknames?: Record<string, string> };
+    const body = (await request.json()) as { nickname?: string; preference?: string };
+    const nickname = body.nickname?.trim();
+    const preference = body.preference?.trim() || "";
 
-    const entries = Object.entries(body.nicknames || {}).filter(([, value]) => value.trim());
-    await Promise.all(
-      entries.map(([userId, nickname]) =>
-        prisma.catUserName.upsert({
-          where: { catId_userId: { catId, userId } },
-          update: { nickname: nickname.trim() },
-          create: { catId, userId, nickname: nickname.trim() },
-        }),
-      ),
-    );
+    if (!nickname) {
+      return NextResponse.json({ error: "称呼不能为空" }, { status: 400 });
+    }
+
+    await prisma.catUserName.upsert({
+      where: { catId_userId: { catId, userId: currentUser.id } },
+      update: { nickname, preference },
+      create: {
+        catId,
+        userId: currentUser.id,
+        nickname,
+        preference,
+        memorySummary: "",
+        relationship: `正在和${currentUser.name}慢慢熟悉中。`,
+      },
+    });
 
     const cat = await prisma.cat.findUnique({
       where: { id: catId },
-      include: { nicknames: { include: { user: { select: { id: true, name: true } } } } },
+      include: { nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } }, memory: true },
     });
     return NextResponse.json({ cat });
   } catch (error) {

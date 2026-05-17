@@ -5,12 +5,9 @@ import { requireApiUser } from "@/lib/auth";
 import { allowedImageTypes, detectImageMimeType, getImageExtension } from "@/lib/image-upload";
 import { prisma } from "@/lib/prisma";
 
-type Params = { params: Promise<{ catId: string }> };
-
-export async function POST(request: Request, { params }: Params) {
+export async function POST(request: Request) {
   try {
-    await requireApiUser();
-    const { catId } = await params;
+    const currentUser = await requireApiUser();
     const formData = await request.formData();
     const file = formData.get("avatar");
 
@@ -29,25 +26,23 @@ export async function POST(request: Request, { params }: Params) {
     }
 
     const ext = getImageExtension(mimeType);
-    const filename = `${catId}-${Date.now()}.${ext}`;
-    const uploadDir = path.join(process.cwd(), "public", "uploads", "cats");
+    const filename = `${currentUser.id}-${Date.now()}.${ext}`;
+    const uploadDir = path.join(process.cwd(), "public", "uploads", "users");
     await mkdir(uploadDir, { recursive: true });
     await writeFile(path.join(uploadDir, filename), buffer);
 
-    const avatarUrl = `/uploads/cats/${filename}`;
-    const existingCat = await prisma.cat.findUnique({ where: { id: catId }, select: { avatarUrl: true } });
-
-    const cat = await prisma.cat.update({
-      where: { id: catId },
-      data: { avatarUrl },
-      include: { nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } }, memory: true },
-    });
-
-    if (existingCat?.avatarUrl?.startsWith("/uploads/cats/") && existingCat.avatarUrl !== avatarUrl) {
-      await unlink(path.join(process.cwd(), "public", existingCat.avatarUrl)).catch(() => {});
+    const existingUser = await prisma.user.findUnique({ where: { id: currentUser.id }, select: { avatarUrl: true } });
+    if (existingUser?.avatarUrl?.startsWith("/uploads/users/")) {
+      await unlink(path.join(process.cwd(), "public", existingUser.avatarUrl)).catch(() => {});
     }
 
-    return NextResponse.json({ cat });
+    const user = await prisma.user.update({
+      where: { id: currentUser.id },
+      data: { avatarUrl: `/uploads/users/${filename}` },
+      select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
+    });
+
+    return NextResponse.json({ user });
   } catch (error) {
     if (error instanceof Response) return error;
     return NextResponse.json({ error: "上传头像失败" }, { status: 500 });

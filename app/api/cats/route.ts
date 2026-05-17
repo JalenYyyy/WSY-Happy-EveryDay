@@ -9,14 +9,14 @@ export async function GET() {
     const cats = await prisma.cat.findMany({
       orderBy: { createdAt: "asc" },
       include: {
-        nicknames: { include: { user: { select: { id: true, name: true } } } },
+        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
         memory: true,
         _count: { select: { messages: true } },
       },
     });
     const users = await prisma.user.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, username: true, name: true },
+      select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
     });
     return NextResponse.json({ cats, users });
   } catch (error) {
@@ -27,7 +27,7 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    await requireApiUser();
+    const currentUser = await requireApiUser();
     const body = (await request.json()) as {
       name?: string;
       personality?: string;
@@ -57,7 +57,14 @@ export async function POST(request: Request) {
 
     const users = await prisma.user.findMany();
     await prisma.catUserName.createMany({
-      data: users.map((user) => ({ catId: cat.id, userId: user.id, nickname: user.name })),
+      data: users.map((user) => ({
+        catId: cat.id,
+        userId: user.id,
+        nickname: user.name,
+        preference: user.id === currentUser.id ? "喜欢自然、贴近生活的回应。" : "",
+        memorySummary: "",
+        relationship: `正在和${user.name}慢慢熟悉中。`,
+      })),
     });
 
     return NextResponse.json({ cat });

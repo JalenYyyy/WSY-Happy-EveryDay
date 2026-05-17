@@ -11,14 +11,14 @@ export default async function HomePage() {
     prisma.cat.findMany({
       orderBy: { createdAt: "asc" },
       include: {
-        nicknames: { include: { user: { select: { id: true, name: true } } } },
+        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
         memory: true,
         _count: { select: { messages: true } },
       },
     }),
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, username: true, name: true },
+      select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
     }),
   ]);
 

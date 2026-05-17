@@ -2,8 +2,7 @@ import type { Metadata, Viewport } from "next";
 import "./globals.css";
 
 export const metadata: Metadata = {
-  title: "猫咪小家",
-  description: "两个人和五只猫咪的共享聊天空间",
+  title: "小月天天开心",
   manifest: "/manifest.webmanifest",
 };
 
