@@ -13,7 +13,7 @@ export async function DELETE(_request: Request, { params }: Params) {
     const moment = await prisma.catMoment.findUnique({ where: { id: momentId } });
 
     if (!moment || moment.catId !== catId) {
-      return NextResponse.json({ error: "朋友圈内容不存在" }, { status: 404 });
+      return NextResponse.json({ error: "猫圈内容不存在" }, { status: 404 });
     }
 
     await prisma.catMoment.delete({ where: { id: momentId } });
@@ -25,6 +25,6 @@ export async function DELETE(_request: Request, { params }: Params) {
     return NextResponse.json({ deletedMomentId: momentId });
   } catch (error) {
     if (error instanceof Response) return error;
-    return NextResponse.json({ error: "删除朋友圈失败" }, { status: 500 });
+    return NextResponse.json({ error: "删除猫圈失败" }, { status: 500 });
   }
 }

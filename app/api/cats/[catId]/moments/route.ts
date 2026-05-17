@@ -16,6 +16,6 @@ export async function GET(_request: Request, { params }: Params) {
     return NextResponse.json({ moments });
   } catch (error) {
     if (error instanceof Response) return error;
-    return NextResponse.json({ error: "获取朋友圈失败" }, { status: 500 });
+    return NextResponse.json({ error: "获取猫圈失败" }, { status: 500 });
   }
 }

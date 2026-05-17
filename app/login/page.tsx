@@ -26,7 +26,22 @@ export default function LoginPage() {
     confirmPassword: "",
   });
   const [passwordSaving, setPasswordSaving] = useState(false);
+  const [passwordError, setPasswordError] = useState("");
   const [passwordNotice, setPasswordNotice] = useState("");
+  const trimmedNewPassword = passwordForm.newPassword.trim();
+  const trimmedConfirmPassword = passwordForm.confirmPassword.trim();
+  const passwordLengthHint = !trimmedNewPassword
+    ? "格式要求：至少 4 位字符。"
+    : trimmedNewPassword.length < 4
+      ? "新密码至少需要 4 位。"
+      : "密码长度符合要求。";
+  const passwordLengthHintTone = !trimmedNewPassword ? "text-stone-400" : trimmedNewPassword.length < 4 ? "text-red-600" : "text-emerald-700";
+  const passwordMatchHint = !trimmedConfirmPassword
+    ? "再次输入新密码后，会检查两次是否一致。"
+    : trimmedConfirmPassword !== trimmedNewPassword
+      ? "两次输入的新密码不一致。"
+      : "两次输入一致。";
+  const passwordMatchHintTone = !trimmedConfirmPassword ? "text-stone-400" : trimmedConfirmPassword !== trimmedNewPassword ? "text-red-600" : "text-emerald-700";
 
   async function readApiResult<T>(response: Response) {
     const data = (await response.json()) as T & { error?: string };
@@ -81,27 +96,27 @@ export default function LoginPage() {
     const confirmPassword = passwordForm.confirmPassword.trim();
 
     if (!currentPassword) {
-      setError("请输入当前密码");
+      setPasswordError("请输入当前密码");
       return;
     }
 
     if (!newPassword) {
-      setError("请输入新密码");
+      setPasswordError("请输入新密码");
       return;
     }
 
     if (newPassword.length < 4) {
-      setError("新密码至少需要 4 位");
+      setPasswordError("新密码至少需要 4 位");
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("两次输入的新密码不一致");
+      setPasswordError("两次输入的新密码不一致");
       return;
     }
 
     setPasswordSaving(true);
-    setError("");
+    setPasswordError("");
     setPasswordNotice("");
 
     const response = await fetch("/api/auth/login", {
@@ -114,12 +129,13 @@ export default function LoginPage() {
     setPasswordSaving(false);
 
     if (!response.ok) {
-      setError(data.error || "修改密码失败");
+      setPasswordError(data.error || "修改密码失败");
       return;
     }
 
     setPassword(newPassword);
     setPasswordForm({ currentPassword: "", newPassword: "", confirmPassword: "" });
+    setPasswordError("");
     setPasswordNotice(data.message || "密码已更新");
     setPasswordDialogOpen(false);
   }
@@ -184,6 +200,7 @@ export default function LoginPage() {
               disabled={!username}
               onClick={() => {
                 setError("");
+                setPasswordError("");
                 setPasswordNotice("");
                 setPasswordDialogOpen(true);
               }}
@@ -239,7 +256,10 @@ export default function LoginPage() {
                   <LockKeyhole size={18} className="text-stone-400" />
                   <input
                     value={passwordForm.currentPassword}
-                    onChange={(event) => setPasswordForm((previous) => ({ ...previous, currentPassword: event.target.value }))}
+                    onChange={(event) => {
+                      setPasswordError("");
+                      setPasswordForm((previous) => ({ ...previous, currentPassword: event.target.value }));
+                    }}
                     type="password"
                     className="h-12 flex-1 border-0 bg-transparent outline-none"
                   />
@@ -251,11 +271,15 @@ export default function LoginPage() {
                   <KeyRound size={18} className="text-stone-400" />
                   <input
                     value={passwordForm.newPassword}
-                    onChange={(event) => setPasswordForm((previous) => ({ ...previous, newPassword: event.target.value }))}
+                    onChange={(event) => {
+                      setPasswordError("");
+                      setPasswordForm((previous) => ({ ...previous, newPassword: event.target.value }));
+                    }}
                     type="password"
                     className="h-12 flex-1 border-0 bg-transparent outline-none"
                   />
                 </div>
+                <p className={`mt-2 text-xs ${passwordLengthHintTone}`}>{passwordLengthHint}</p>
               </label>
               <label className="block">
                 <span className="mb-2 block text-sm font-medium text-stone-600">确认新密码</span>
@@ -263,12 +287,17 @@ export default function LoginPage() {
                   <KeyRound size={18} className="text-stone-400" />
                   <input
                     value={passwordForm.confirmPassword}
-                    onChange={(event) => setPasswordForm((previous) => ({ ...previous, confirmPassword: event.target.value }))}
+                    onChange={(event) => {
+                      setPasswordError("");
+                      setPasswordForm((previous) => ({ ...previous, confirmPassword: event.target.value }));
+                    }}
                     type="password"
                     className="h-12 flex-1 border-0 bg-transparent outline-none"
                   />
                 </div>
+                <p className={`mt-2 text-xs ${passwordMatchHintTone}`}>{passwordMatchHint}</p>
               </label>
+              {passwordError ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{passwordError}</p> : null}
             </div>
 
             <footer className="flex gap-2 border-t border-stone-200 p-4">
@@ -281,7 +310,10 @@ export default function LoginPage() {
               </button>
               <button
                 type="button"
-                onClick={() => setPasswordDialogOpen(false)}
+                onClick={() => {
+                  setPasswordError("");
+                  setPasswordDialogOpen(false);
+                }}
                 className="h-12 rounded-2xl bg-white px-5 text-sm font-semibold text-stone-600"
               >
                 取消

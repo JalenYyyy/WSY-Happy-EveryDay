@@ -8,15 +8,19 @@ datasource db {
 }
 
 model User {
-  id        String        @id @default(cuid())
-  username  String        @unique(map: "sqlite_autoindex_User_2")
-  name      String
-  avatarUrl String?
-  bio       String        @default("")
-  password  String
-  createdAt DateTime      @default(now())
-  nicknames CatUserName[]
-  messages  Message[]
+  id                     String         @id @default(cuid())
+  username               String         @unique(map: "sqlite_autoindex_User_2")
+  name                   String
+  avatarUrl              String?
+  bio                    String         @default("")
+  password               String
+  createdAt              DateTime       @default(now())
+  nicknames              CatUserName[]
+  messages               Message[]
+  receivedWhispers       WhisperCard[]  @relation("WhisperCardRecipient")
+  sentWhispers           WhisperCard[]  @relation("WhisperCardSender")
+  receivedWhisperReplies WhisperReply[] @relation("WhisperReplyRecipient")
+  sentWhisperReplies     WhisperReply[] @relation("WhisperReplySender")
 }
 
 model Cat {
@@ -30,9 +34,9 @@ model Cat {
   createdAt   DateTime      @default(now())
   updatedAt   DateTime      @updatedAt
   memory      CatMemory?
+  moments     CatMoment[]
   nicknames   CatUserName[]
   messages    Message[]
-  moments     CatMoment[]
 }
 
 model CatUserName {
@@ -90,4 +94,47 @@ model AppSetting {
   key       String   @unique(map: "sqlite_autoindex_AppSetting_2")
   value     String
   updatedAt DateTime @updatedAt
+}
+
+model LoginThrottle {
+  key           String @id
+  count         Int
+  firstFailedAt Int
+  lockedUntil   Int?
+}
+
+model WhisperCard {
+  id          String         @id @default(cuid())
+  senderId    String
+  recipientId String
+  content     String
+  deliverAt   DateTime
+  editedAt    DateTime?
+  readAt      DateTime?
+  createdAt   DateTime       @default(now())
+  updatedAt   DateTime       @updatedAt
+  recipient   User           @relation("WhisperCardRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender      User           @relation("WhisperCardSender", fields: [senderId], references: [id], onDelete: Cascade)
+  replies     WhisperReply[]
+
+  @@index([senderId, recipientId, deliverAt])
+  @@index([recipientId, deliverAt])
+  @@index([recipientId, readAt])
+}
+
+model WhisperReply {
+  id          String      @id @default(cuid())
+  cardId      String
+  senderId    String
+  recipientId String
+  content     String
+  readAt      DateTime?
+  createdAt   DateTime    @default(now())
+  updatedAt   DateTime    @updatedAt
+  recipient   User        @relation("WhisperReplyRecipient", fields: [recipientId], references: [id], onDelete: Cascade)
+  sender      User        @relation("WhisperReplySender", fields: [senderId], references: [id], onDelete: Cascade)
+  card        WhisperCard @relation(fields: [cardId], references: [id], onDelete: Cascade)
+
+  @@index([cardId, createdAt])
+  @@index([recipientId, readAt])
 }

@@ -17,6 +17,72 @@ async function ensureColumn(table: string, column: string, definition: string) {
   }
 }
 
+async function getColumnNames(table: string) {
+  const columns = (await prisma.$queryRawUnsafe(`PRAGMA table_info("${table}");`)) as Array<{ name: string }>;
+  return columns.map((column) => column.name);
+}
+
+async function migrateWhisperCardTable() {
+  const columns = await getColumnNames("WhisperCard");
+
+  if (!columns.includes("expiresAt")) {
+    return;
+  }
+
+  await prisma.$executeRawUnsafe("PRAGMA foreign_keys = OFF;");
+
+  try {
+    await prisma.$executeRawUnsafe("BEGIN IMMEDIATE;");
+    await prisma.$executeRawUnsafe(`
+      CREATE TABLE "WhisperCard_new" (
+        "id" TEXT NOT NULL PRIMARY KEY,
+        "senderId" TEXT NOT NULL,
+        "recipientId" TEXT NOT NULL,
+        "content" TEXT NOT NULL,
+        "deliverAt" DATETIME NOT NULL,
+        "editedAt" DATETIME,
+        "readAt" DATETIME,
+        "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+        "updatedAt" DATETIME NOT NULL,
+        CONSTRAINT "WhisperCard_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+        CONSTRAINT "WhisperCard_recipientId_fkey" FOREIGN KEY ("recipientId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+      );
+    `);
+    await prisma.$executeRawUnsafe(`
+      INSERT INTO "WhisperCard_new" (
+        "id",
+        "senderId",
+        "recipientId",
+        "content",
+        "deliverAt",
+        "editedAt",
+        "readAt",
+        "createdAt",
+        "updatedAt"
+      )
+      SELECT
+        "id",
+        "senderId",
+        "recipientId",
+        "content",
+        "deliverAt",
+        "editedAt",
+        "readAt",
+        "createdAt",
+        "updatedAt"
+      FROM "WhisperCard";
+    `);
+    await prisma.$executeRawUnsafe('DROP TABLE "WhisperCard";');
+    await prisma.$executeRawUnsafe('ALTER TABLE "WhisperCard_new" RENAME TO "WhisperCard";');
+    await prisma.$executeRawUnsafe("COMMIT;");
+  } catch (error) {
+    await prisma.$executeRawUnsafe("ROLLBACK;");
+    throw error;
+  } finally {
+    await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON;");
+  }
+}
+
 async function main() {
   await prisma.$executeRawUnsafe("PRAGMA foreign_keys = ON;");
 
@@ -129,6 +195,65 @@ async function main() {
       "value" TEXT NOT NULL,
       "updatedAt" DATETIME NOT NULL
     );
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "WhisperCard" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "senderId" TEXT NOT NULL,
+      "recipientId" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "deliverAt" DATETIME NOT NULL,
+      "editedAt" DATETIME,
+      "readAt" DATETIME,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      CONSTRAINT "WhisperCard_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "WhisperCard_recipientId_fkey" FOREIGN KEY ("recipientId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );
+  `);
+
+  await migrateWhisperCardTable();
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WhisperCard_senderId_recipientId_deliverAt_idx"
+    ON "WhisperCard"("senderId", "recipientId", "deliverAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WhisperCard_recipientId_deliverAt_idx"
+    ON "WhisperCard"("recipientId", "deliverAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WhisperCard_recipientId_readAt_idx"
+    ON "WhisperCard"("recipientId", "readAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "WhisperReply" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "cardId" TEXT NOT NULL,
+      "senderId" TEXT NOT NULL,
+      "recipientId" TEXT NOT NULL,
+      "content" TEXT NOT NULL,
+      "readAt" DATETIME,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      CONSTRAINT "WhisperReply_cardId_fkey" FOREIGN KEY ("cardId") REFERENCES "WhisperCard" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "WhisperReply_senderId_fkey" FOREIGN KEY ("senderId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE,
+      CONSTRAINT "WhisperReply_recipientId_fkey" FOREIGN KEY ("recipientId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WhisperReply_cardId_createdAt_idx"
+    ON "WhisperReply"("cardId", "createdAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "WhisperReply_recipientId_readAt_idx"
+    ON "WhisperReply"("recipientId", "readAt");
   `);
 }
 

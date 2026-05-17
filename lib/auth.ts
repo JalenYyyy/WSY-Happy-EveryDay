@@ -18,9 +18,13 @@ function sign(payload: string) {
   return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex");
 }
 
-export function createSessionToken(userId: string) {
+function createSessionStateKey(password: string) {
+  return crypto.createHmac("sha256", getSecret()).update(`session:${password}`).digest("hex");
+}
+
+export function createSessionToken(userId: string, password: string) {
   const payload = Buffer.from(
-    JSON.stringify({ userId, exp: Date.now() + 1000 * 60 * 60 * 24 * 30 }),
+    JSON.stringify({ userId, sessionKey: createSessionStateKey(password), exp: Date.now() + 1000 * 60 * 60 * 24 * 30 }),
   ).toString("base64url");
   return `${payload}.${sign(payload)}`;
 }
@@ -33,9 +37,10 @@ export function readSessionToken(token?: string) {
   try {
     const session = JSON.parse(Buffer.from(payload, "base64url").toString("utf8")) as {
       userId: string;
+      sessionKey: string;
       exp: number;
     };
-    if (!session.userId || Date.now() > session.exp) return null;
+    if (!session.userId || !session.sessionKey || Date.now() > session.exp) return null;
     return session;
   } catch {
     return null;
@@ -47,10 +52,17 @@ export async function getCurrentUser() {
   const session = readSessionToken(cookieStore.get(SESSION_COOKIE)?.value);
   if (!session) return null;
 
-  return prisma.user.findUnique({
+  const user = await prisma.user.findUnique({
     where: { id: session.userId },
-    select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
+    select: { id: true, username: true, name: true, avatarUrl: true, bio: true, password: true },
   });
+
+  if (!user || session.sessionKey !== createSessionStateKey(user.password)) {
+    return null;
+  }
+
+  const { password: _password, ...safeUser } = user;
+  return safeUser;
 }
 
 export async function requireUser() {

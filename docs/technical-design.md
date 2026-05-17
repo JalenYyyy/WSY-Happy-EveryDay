@@ -1,4 +1,4 @@
-# 猫咪小家技术文档
+# 小月天天开心技术文档
 
 ## 1. 技术栈
 
@@ -96,7 +96,7 @@ public/
 
 ### CatMoment
 
-保存猫咪朋友圈 / 电子相册内容。
+保存猫咪猫圈 / 电子相册内容。
 
 关键字段：
 - `catId`
@@ -114,7 +114,46 @@ public/
 
 ### AppSetting
 
-预留应用设置表，目前仅 seed `llmProvider = openai-compatible`。
+预留应用设置表。
+
+当前用途：
+- seed `llmProvider = openai-compatible`
+- 持久化登录失败节流状态
+- 持久化高频写接口的动作节流状态
+
+### WhisperCard
+
+保存双用户之间的悄悄话留言卡。
+
+关键字段：
+- `senderId`
+- `recipientId`
+- `content`
+- `deliverAt`
+- `editedAt`
+- `readAt`
+- `createdAt`
+
+规则：
+- 只保留送达时间，不再设置过期或隐藏删除时间。
+- 发送方仅可在送达前编辑内容或送达时间。
+- 发送方可随时删除卡片，删除后双方都不可见。
+
+### WhisperReply
+
+保存悄悄话留言卡下的即时回复。
+
+关键字段：
+- `cardId`
+- `senderId`
+- `recipientId`
+- `content`
+- `readAt`
+- `createdAt`
+
+规则：
+- 仅已送达的留言卡可回复。
+- 删除留言卡时，相关回复会级联删除。
 
 ## 4. 认证设计
 
@@ -123,6 +162,7 @@ public/
 - 登录接口校验数据库中的用户账号密码，并兼容旧明文密码在成功登录后自动迁移为哈希。
 - 服务端生成 HMAC 签名 Session Token。
 - Token 写入 HttpOnly Cookie：`cat_session`。
+- Session Token 会绑定当前密码状态；修改密码后，旧登录态会自动失效。
 - API 使用 `requireApiUser()` 校验登录。
 - 页面使用 `requireUser()` 校验登录并跳转 `/login`。
 - 登录接口带有基础失败节流：同一来源对同一用户名连续输错 5 次后会临时锁定 10 分钟。
@@ -191,12 +231,29 @@ public/
   - 保存猫咪回复
   - 更新共享长期记忆
   - 更新当前用户的专属记忆和关系状态
-  - 如果发送的是图片，会自动写入猫咪朋友圈
+  - 如果发送的是图片，会自动写入猫咪猫圈
 
 ### Moments
 
 - `GET /api/cats/:catId/moments`
-  - 获取猫咪朋友圈 / 电子相册
+  - 获取猫咪猫圈 / 电子相册
+
+### Whispers
+
+- `GET /api/whispers`
+  - 返回当前用户与另一位用户之间的悄悄话概览
+- `POST /api/whispers`
+  - 创建一张悄悄话留言卡
+  - 入参：`recipientId`、`content`、`deliverAt`
+- `PATCH /api/whispers/:cardId`
+  - 仅允许发送方在送达前编辑留言卡
+- `DELETE /api/whispers/:cardId`
+  - 允许发送方随时删除留言卡
+  - 删除后双方都不可见，相关回复一并删除
+- `POST /api/whispers/:cardId/replies`
+  - 对已送达留言卡发送即时回复
+- `POST /api/whispers/read`
+  - 将当前可见的悄悄话留言卡与回复标记为已读
 
 ## 6. LLM 接入
 
@@ -253,6 +310,8 @@ prisma generate && tsx prisma/init-db.ts
 
 `prisma/init-db.ts` 使用 Prisma Client 执行 SQLite 建表 SQL。应用运行仍然使用 Prisma Client。
 
+当本地 SQLite 表结构落后于当前 schema 时，`prisma/init-db.ts` 也会执行必要的轻量迁移，例如重建 `WhisperCard` 以移除已废弃的旧列。
+
 后续上生产建议恢复标准 migration 流程：
 
 ```bash
@@ -267,11 +326,11 @@ prisma migrate deploy
 - 默认头像位于 `public/avatars`。
 - 用户上传头像位于 `public/uploads/users`。
 - 猫咪上传头像位于 `public/uploads/cats`。
-- 聊天图片 / 朋友圈图片位于 `public/uploads/moments`。
+- 聊天图片 / 猫圈图片位于 `public/uploads/moments`。
 - 所有上传图片仅支持 png、jpg、webp、gif，且服务端会按文件头识别真实格式。
 - 删除猫咪时，如果头像路径以 `/uploads/cats/` 开头，会同步删除本地文件。
 - 替换猫咪头像时，会删除旧的上传头像文件。
-- 删除单条朋友圈时，会同步删除该条对应的本地图片文件。
+- 删除单条猫圈时，会同步删除该条对应的本地图片文件。
 
 生产建议：
 - 改为 S3、Cloudflare R2、阿里 OSS 等对象存储。

@@ -131,15 +131,17 @@ export async function POST(request: Request) {
 
   await clearLoginFailures(attemptKey);
 
+  let sessionPassword = user.password;
   if (!isHashedPassword(user.password)) {
+    sessionPassword = await hashPassword(password || "");
     await prisma.user.update({
       where: { id: user.id },
-      data: { password: await hashPassword(password || "") },
+      data: { password: sessionPassword },
     });
   }
 
   const cookieStore = await cookies();
-  cookieStore.set(authCookie.name, createSessionToken(user.id), authCookie.options);
+  cookieStore.set(authCookie.name, createSessionToken(user.id, sessionPassword), authCookie.options);
 
   return NextResponse.json({ user: { id: user.id, username: user.username, name: user.name, avatarUrl: user.avatarUrl, bio: user.bio } });
 }

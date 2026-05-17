@@ -2,11 +2,15 @@ import { NextResponse } from "next/server";
 import { mkdir, writeFile } from "fs/promises";
 import path from "path";
 import { requireApiUser } from "@/lib/auth";
+import { consumeActionThrottle } from "@/lib/action-throttle";
 import { allowedImageTypes, detectImageMimeType, getImageExtension } from "@/lib/image-upload";
 import { buildMemorySummary, chatCompletion } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ catId: string }> };
+
+const MESSAGE_ACTION_LIMIT = 12;
+const MESSAGE_ACTION_WINDOW_MS = 60 * 1000;
 
 function fileToDataUrl(mimeType: string, buffer: Buffer) {
   return `data:${mimeType};base64,${buffer.toString("base64")}`;
@@ -72,6 +76,19 @@ export async function POST(request: Request, { params }: Params) {
 
     if (!text && !imageUrl) {
       return NextResponse.json({ error: "消息不能为空" }, { status: 400 });
+    }
+
+    const throttleResult = await consumeActionThrottle({
+      scope: "message-send",
+      subjectId: user.id,
+      limit: MESSAGE_ACTION_LIMIT,
+      windowMs: MESSAGE_ACTION_WINDOW_MS,
+    });
+    if (!throttleResult.allowed) {
+      return NextResponse.json(
+        { error: `发送太频繁了，请在 ${Math.ceil(throttleResult.retryAfterSeconds / 60)} 分钟后再试` },
+        { status: 429, headers: { "Retry-After": String(throttleResult.retryAfterSeconds) } },
+      );
     }
 
     const cat = await prisma.cat.findUnique({

@@ -1,3 +1,5 @@
+import sharp from "sharp";
+
 const imageTypes = {
   png: "image/png",
   jpeg: "image/jpeg",
@@ -55,4 +57,47 @@ export function detectImageMimeType(buffer: Buffer): AllowedImageMimeType | null
 
 export function getImageExtension(mimeType: AllowedImageMimeType) {
   return extensionByMimeType[mimeType];
+}
+
+export const avatarUploadLimitBytes = 10 * 1024 * 1024;
+export const avatarStoredLimitBytes = 2 * 1024 * 1024;
+
+export async function prepareAvatarImage(buffer: Buffer, mimeType: AllowedImageMimeType) {
+  if (mimeType === imageTypes.gif) {
+    if (buffer.length > avatarStoredLimitBytes) {
+      throw new Error("GIF 头像不能超过 2MB，请换一张图或先压缩后再上传");
+    }
+
+    return {
+      buffer,
+      mimeType,
+      extension: getImageExtension(mimeType),
+    };
+  }
+
+  let quality = 82;
+  let output = await sharp(buffer)
+    .rotate()
+    .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
+    .webp({ quality })
+    .toBuffer();
+
+  while (output.length > avatarStoredLimitBytes && quality > 55) {
+    quality -= 7;
+    output = await sharp(buffer)
+      .rotate()
+      .resize({ width: 1024, height: 1024, fit: "inside", withoutEnlargement: true })
+      .webp({ quality })
+      .toBuffer();
+  }
+
+  if (output.length > avatarStoredLimitBytes) {
+    throw new Error("头像处理后仍然过大，请换一张更简单的图片再试");
+  }
+
+  return {
+    buffer: output,
+    mimeType: imageTypes.webp,
+    extension: getImageExtension(imageTypes.webp),
+  };
 }

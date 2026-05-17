@@ -10,3 +10,7 @@ prisma/dev.db
 prisma/dev.db-journal
 public/uploads/cats/*
 !public/uploads/cats/.gitkeep
+public/uploads/moments/*
+!public/uploads/moments/.gitkeep
+public/uploads/users/*
+!public/uploads/users/.gitkeep
