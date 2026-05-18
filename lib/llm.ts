@@ -15,7 +15,7 @@ type ChatInput = {
 };
 
 function missingConfigReply(catName: string) {
-  return `${catName}轻轻蹭了蹭你：我现在还没有接上大模型。请在 .env 里配置 LLM_BASE_URL、LLM_API_KEY 和 LLM_MODEL，然后重新启动服务。`;
+  return `${catName}轻轻蹭了蹭你：我现在还没有接上大模型。请至少在 .env 里配置 LLM_API_KEY 或 DEEPSEEK_API_KEY，然后重新启动服务。`;
 }
 
 function fallbackReply(cat: CatWithContext, nickname: string, userMessage: string) {
@@ -29,13 +29,13 @@ function fallbackImageReply(cat: CatWithContext, nickname: string, imageDescript
 }
 
 export async function chatCompletion(input: ChatInput) {
-  const baseUrl = process.env.LLM_BASE_URL;
-  const apiKey = process.env.LLM_API_KEY;
-  const model = process.env.LLM_MODEL;
+  const baseUrl = process.env.LLM_BASE_URL?.trim() || process.env.DEEPSEEK_BASE_URL?.trim() || "https://api.deepseek.com";
+  const apiKey = process.env.LLM_API_KEY?.trim() || process.env.DEEPSEEK_API_KEY?.trim();
+  const model = process.env.LLM_MODEL?.trim() || process.env.DEEPSEEK_MODEL?.trim() || "deepseek-v4-pro";
   const currentProfile = input.cat.nicknames.find((item) => item.userId === input.currentUser.id);
   const nickname = currentProfile?.nickname || input.currentUser.name;
 
-  if (!baseUrl || !apiKey || !model) {
+  if (!apiKey) {
     return {
       content: missingConfigReply(input.cat.name),
       usedFallback: true,

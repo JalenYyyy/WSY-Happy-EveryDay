@@ -1,0 +1,9 @@
+﻿HTTP/1.1 200 OK
+vary: rsc, next-router-state-tree, next-router-prefetch, next-router-segment-prefetch
+content-type: application/json
+Date: Mon, 18 May 2026 13:50:17 GMT
+Connection: keep-alive
+Keep-Alive: timeout=5
+Transfer-Encoding: chunked
+
+{"messages":[{"id":"cmpb9h2ll000zdo252ogqdefz","catId":"cmpb9bbk10000kq6y7d8dkhw3","userId":"default-user-1","role":"USER","messageType":"TEXT","content":"璇峰彧鍥炵瓟鍥涗釜瀛?,"imageUrl":null,"createdAt":"2026-05-18T13:50:09.513Z","user":{"id":"default-user-1","name":"灏忛奔"}},{"id":"cmpb9h8gl0011do25i756jdje","catId":"cmpb9bbk10000kq6y7d8dkhw3","userId":null,"role":"CAT","messageType":"TEXT","content":"锛堟妸姣涜尭鑼哥殑鑴戣韫埌灏忛奔鎵嬪績锛夎涓嶈杞湀鍦堬紵","imageUrl":null,"createdAt":"2026-05-18T13:50:17.109Z","user":null}],"usedFallback":false}

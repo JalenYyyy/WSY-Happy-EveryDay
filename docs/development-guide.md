@@ -38,9 +38,9 @@ user2 / cat123
 ```bash
 DATABASE_URL="file:./dev.db"
 APP_SESSION_SECRET="local-dev-secret-change-before-production"
-LLM_BASE_URL=""
+LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY=""
-LLM_MODEL=""
+LLM_MODEL="deepseek-v4-pro"
 ```
 
 说明：开发环境未配置 `APP_SESSION_SECRET` 时会使用本地默认值；生产环境现在会直接报错并拒绝启动。默认账号密码会在 seed 或首次成功登录后写入为哈希值。
@@ -51,8 +51,10 @@ DeepSeek 示例：
 ```bash
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY="你的 key"
-LLM_MODEL="deepseek-chat"
+LLM_MODEL="deepseek-v4-pro"
 ```
+
+也支持使用 `DEEPSEEK_BASE_URL`、`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL` 这组变量名；未显式设置时，服务端会默认使用 DeepSeek 官方地址和 `deepseek-v4-pro`。
 
 ## 5. 常用命令
 

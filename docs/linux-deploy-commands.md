@@ -52,7 +52,7 @@ DATABASE_URL="file:./dev.db"
 APP_SESSION_SECRET="请替换成你的长随机字符串"
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY="请替换成你的实际 key"
-LLM_MODEL="deepseek-chat"
+LLM_MODEL="deepseek-v4-pro"
 EOF
 ```
 

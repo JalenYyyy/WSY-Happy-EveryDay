@@ -133,7 +133,7 @@ DATABASE_URL="file:./dev.db"
 APP_SESSION_SECRET="换成你自己的长随机字符串"
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY="你的 key"
-LLM_MODEL="deepseek-chat"
+LLM_MODEL="deepseek-v4-pro"
 ```
 
 建议把 `.env` 放在应用目录，并确保：

@@ -262,9 +262,9 @@ public/
 环境变量：
 
 ```bash
-LLM_BASE_URL=""
+LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY=""
-LLM_MODEL=""
+LLM_MODEL="deepseek-v4-pro"
 ```
 
 调用路径：

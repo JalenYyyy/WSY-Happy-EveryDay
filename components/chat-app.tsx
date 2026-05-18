@@ -127,6 +127,33 @@ function isAllowedUploadType(file: File) {
   return allowedUploadTypes.has(file.type);
 }
 
+function createOptimisticMessage({
+  catId,
+  content,
+  currentUser,
+  imageUrl,
+}: {
+  catId: string;
+  content: string;
+  currentUser: User;
+  imageUrl?: string;
+}): Message {
+  return {
+    id: `optimistic-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
+    catId,
+    userId: currentUser.id,
+    role: "USER",
+    messageType: imageUrl ? "IMAGE" : "TEXT",
+    content,
+    imageUrl,
+    createdAt: new Date().toISOString(),
+    user: {
+      id: currentUser.id,
+      name: currentUser.name,
+    },
+  };
+}
+
 async function readApiResult<T>(response: Response) {
   const data = (await response.json()) as T & { error?: string };
   if (!response.ok) {
@@ -367,31 +394,47 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
     if (!messageText.trim() || !selectedCat || sending) return;
 
     const content = messageText.trim();
+    const optimisticMessage = createOptimisticMessage({
+      catId: selectedCat.id,
+      content,
+      currentUser: sessionUser,
+    });
+
     setMessageText("");
     setSending(true);
     setNotice("");
+    setMessages((previous) => [...previous, optimisticMessage]);
 
-    const response = await fetch(`/api/cats/${selectedCat.id}/messages`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ content }),
-    });
+    try {
+      const response = await fetch(`/api/cats/${selectedCat.id}/messages`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ content }),
+      });
 
-    const data = (await response.json()) as { messages?: Message[]; error?: string; usedFallback?: boolean };
-    setSending(false);
+      const data = (await response.json()) as { messages?: Message[]; error?: string; usedFallback?: boolean };
 
-    if (!response.ok || !data.messages) {
-      setNotice(data.error || "发送失败，请稍后再试");
-      return;
+      if (!response.ok || !data.messages) {
+        throw new Error(data.error || "发送失败，请稍后再试");
+      }
+
+      setMessages((previous) => [
+        ...previous.filter((message) => message.id !== optimisticMessage.id),
+        ...data.messages!,
+      ]);
+      if (data.usedFallback) {
+        setNotice("模型暂时不可用，已使用本地备用回复。");
+      }
+      refreshCats().catch((error: unknown) => {
+        setNotice(error instanceof Error ? error.message : "刷新猫咪列表失败，请稍后重试");
+      });
+    } catch (error) {
+      setMessages((previous) => previous.filter((message) => message.id !== optimisticMessage.id));
+      setMessageText(content);
+      setNotice(error instanceof Error ? error.message : "发送失败，请稍后再试");
+    } finally {
+      setSending(false);
     }
-
-    setMessages((previous) => [...previous, ...data.messages!]);
-    if (data.usedFallback) {
-      setNotice("模型暂时不可用，已使用本地备用回复。");
-    }
-    refreshCats().catch((error: unknown) => {
-      setNotice(error instanceof Error ? error.message : "刷新猫咪列表失败，请稍后重试");
-    });
   }
 
   async function sendImage(file?: File) {
@@ -407,38 +450,55 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
 
     setSending(true);
     setNotice("");
+    setActivePanel("chat");
 
     const formData = new FormData();
     formData.set("image", file);
-    if (messageText.trim()) {
-      formData.set("content", messageText.trim());
+    const caption = messageText.trim();
+    if (caption) {
+      formData.set("content", caption);
     }
 
-    const response = await fetch(`/api/cats/${selectedCat.id}/messages`, {
-      method: "POST",
-      body: formData,
+    const previewUrl = URL.createObjectURL(file);
+    const optimisticMessage = createOptimisticMessage({
+      catId: selectedCat.id,
+      content: caption || "请看看这张图片里猫咪现在是什么心情，也按你的性格回复我。",
+      currentUser: sessionUser,
+      imageUrl: previewUrl,
     });
 
-    const data = (await response.json()) as { messages?: Message[]; error?: string; usedFallback?: boolean };
-    setSending(false);
-
-    if (!response.ok || !data.messages) {
-      setNotice(data.error || "发图失败，请稍后再试");
-      return;
-    }
-
     setMessageText("");
-    setMessages((previous) => [...previous, ...data.messages!]);
-    setActivePanel("chat");
-    if (data.usedFallback) {
-      setNotice("模型暂时不可用，已使用本地备用回复。图片已收进猫咪猫圈。");
-    } else {
-      setNotice("图片已发给猫咪，也收进它的猫圈了。");
-    }
+    setMessages((previous) => [...previous, optimisticMessage]);
+
     try {
+      const response = await fetch(`/api/cats/${selectedCat.id}/messages`, {
+        method: "POST",
+        body: formData,
+      });
+
+      const data = (await response.json()) as { messages?: Message[]; error?: string; usedFallback?: boolean };
+
+      if (!response.ok || !data.messages) {
+        throw new Error(data.error || "发图失败，请稍后再试");
+      }
+
+      setMessages((previous) => [
+        ...previous.filter((message) => message.id !== optimisticMessage.id),
+        ...data.messages!,
+      ]);
+      if (data.usedFallback) {
+        setNotice("模型暂时不可用，已使用本地备用回复。图片已收进猫咪猫圈。");
+      } else {
+        setNotice("图片已发给猫咪，也收进它的猫圈了。");
+      }
       await Promise.all([refreshCats(), refreshMoments()]);
     } catch (error) {
-      setNotice(error instanceof Error ? error.message : "刷新数据失败，请稍后重试");
+      setMessages((previous) => previous.filter((message) => message.id !== optimisticMessage.id));
+      setMessageText(caption);
+      setNotice(error instanceof Error ? error.message : "发图失败，请稍后再试");
+    } finally {
+      URL.revokeObjectURL(previewUrl);
+      setSending(false);
     }
   }
 

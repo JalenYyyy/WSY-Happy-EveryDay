@@ -27,10 +27,10 @@ npm run dev
 ```bash
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY="你的 API Key"
-LLM_MODEL="deepseek-chat"
+LLM_MODEL="deepseek-v4-pro"
 ```
 
-未配置模型时，应用会使用本地备用回复并在界面提示。
+如果你更习惯使用 DeepSeek 命名，也支持 `DEEPSEEK_BASE_URL`、`DEEPSEEK_API_KEY`、`DEEPSEEK_MODEL`。未配置任何 API Key 时，应用会使用本地备用回复并在界面提示。
 
 生产环境必须显式设置 `APP_SESSION_SECRET`；未设置时服务会拒绝使用默认回退值。
 
