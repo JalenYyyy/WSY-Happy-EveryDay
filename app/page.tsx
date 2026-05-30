@@ -8,21 +8,27 @@ export default async function HomePage() {
   const user = await requireUser();
   if (!user) redirect("/login");
 
-  const [cats, users, initialWhispers] = await Promise.all([
+  const [rawCats, users, initialWhispers, globalNickname] = await Promise.all([
     prisma.cat.findMany({
       orderBy: { createdAt: "asc" },
-      include: {
-        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
-        memory: true,
-        _count: { select: { messages: true } },
-      },
+      include: { _count: { select: { messages: true } } },
     }),
     prisma.user.findMany({
       orderBy: { createdAt: "asc" },
-      select: { id: true, username: true, name: true, avatarUrl: true, bio: true },
+      select: { id: true, username: true, name: true, avatarUrl: true },
     }),
     getWhisperOverview(user.id),
+    prisma.catUserName.findFirst({
+      where: { userId: user.id },
+      orderBy: { updatedAt: "desc" },
+      select: { nickname: true },
+    }),
   ]);
+
+  const cats = rawCats.map((cat) => ({
+    ...cat,
+    nickname: globalNickname?.nickname || "",
+  }));
 
   return <ChatApp currentUser={user} initialCats={cats} users={users} initialWhispers={initialWhispers} />;
 }

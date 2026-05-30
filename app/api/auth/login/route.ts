@@ -99,7 +99,7 @@ async function clearLoginFailures(key: string) {
 export async function GET() {
   const users = await prisma.user.findMany({
     orderBy: { createdAt: "asc" },
-    select: { id: true, username: true, name: true, avatarUrl: true },
+    select: { id: true, username: true, name: true },
   });
 
   return NextResponse.json({ users });
@@ -143,7 +143,7 @@ export async function POST(request: Request) {
   const cookieStore = await cookies();
   cookieStore.set(authCookie.name, createSessionToken(user.id, sessionPassword), authCookie.options);
 
-  return NextResponse.json({ user: { id: user.id, username: user.username, name: user.name, avatarUrl: user.avatarUrl, bio: user.bio } });
+  return NextResponse.json({ user: { id: user.id, username: user.username, name: user.name, avatarUrl: user.avatarUrl } });
 }
 
 export async function PATCH(request: Request) {

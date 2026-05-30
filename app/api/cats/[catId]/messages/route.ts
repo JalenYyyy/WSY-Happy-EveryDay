@@ -4,7 +4,7 @@ import path from "path";
 import { requireApiUser } from "@/lib/auth";
 import { consumeActionThrottle } from "@/lib/action-throttle";
 import { allowedImageTypes, detectImageMimeType, getImageExtension } from "@/lib/image-upload";
-import { buildMemorySummary, chatCompletion } from "@/lib/llm";
+import { chatCompletion } from "@/lib/llm";
 import { prisma } from "@/lib/prisma";
 
 type Params = { params: Promise<{ catId: string }> };
@@ -91,13 +91,16 @@ export async function POST(request: Request, { params }: Params) {
       );
     }
 
-    const cat = await prisma.cat.findUnique({
-      where: { id: catId },
-      include: {
-        memory: true,
-        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
-      },
-    });
+    const [cat, globalNickname] = await Promise.all([
+      prisma.cat.findUnique({
+        where: { id: catId },
+      }),
+      prisma.catUserName.findFirst({
+        where: { userId: user.id },
+        orderBy: { updatedAt: "desc" },
+        select: { nickname: true },
+      }),
+    ]);
 
     if (!cat) {
       return NextResponse.json({ error: "猫咪不存在" }, { status: 404 });
@@ -122,7 +125,10 @@ export async function POST(request: Request, { params }: Params) {
     });
 
     const completion = await chatCompletion({
-      cat,
+      cat: {
+        ...cat,
+        nickname: globalNickname?.nickname || "",
+      },
       currentUser: user,
       recentMessages: recentMessages.reverse(),
       userMessage: text,
@@ -143,36 +149,6 @@ export async function POST(request: Request, { params }: Params) {
         },
       });
     }
-
-    await prisma.catMemory.upsert({
-      where: { catId },
-      update: {
-        summary: buildMemorySummary(cat.memory?.summary || "", user.name, text),
-        relationship: `最近常和${user.name}一起聊天，小家气氛更熟悉了。`,
-      },
-      create: {
-        catId,
-        summary: buildMemorySummary("", user.name, text),
-        relationship: `最近常和${user.name}一起聊天，小家气氛更熟悉了。`,
-      },
-    });
-
-    const currentProfile = cat.nicknames.find((item) => item.userId === user.id);
-    await prisma.catUserName.upsert({
-      where: { catId_userId: { catId, userId: user.id } },
-      update: {
-        memorySummary: buildMemorySummary(currentProfile?.memorySummary || "", user.name, imageUrl ? `[图片] ${text}` : text),
-        relationship: `${cat.name}越来越熟悉${user.name}的节奏了。`,
-      },
-      create: {
-        catId,
-        userId: user.id,
-        nickname: user.name,
-        preference: "",
-        memorySummary: buildMemorySummary("", user.name, imageUrl ? `[图片] ${text}` : text),
-        relationship: `${cat.name}正在慢慢认识${user.name}。`,
-      },
-    });
 
     return NextResponse.json({ messages: [userMessage, catMessage], usedFallback: completion.usedFallback });
   } catch (error) {

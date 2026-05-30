@@ -1,6 +1,4 @@
 "use client";
-
-import Image from "next/image";
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Cat, KeyRound, LockKeyhole, X } from "lucide-react";
@@ -9,7 +7,6 @@ export type LoginUser = {
   id: string;
   username: string;
   name: string;
-  avatarUrl: string | null;
 };
 
 type LoginPageClientProps = {
@@ -224,14 +221,9 @@ export default function LoginPageClient({ initialUsers }: LoginPageClientProps) 
                 }`}
               >
                 <span className="mb-2 flex items-center gap-2">
-                  {user.avatarUrl ? (
-                    <Image src={user.avatarUrl} alt={user.name} width={28} height={28} className="h-7 w-7 rounded-full object-cover" />
-                  ) : (
-                    <span className="flex h-7 w-7 items-center justify-center rounded-full bg-sage text-xs font-semibold text-ink">{user.name.charAt(0)}</span>
-                  )}
+                  <span className="flex h-7 w-7 items-center justify-center rounded-full bg-sage text-xs font-semibold text-ink">{user.name.charAt(0)}</span>
                   <span className="block text-sm font-medium">{user.name}</span>
                 </span>
-                <span className="block text-xs opacity-70">{user.username}</span>
               </button>
             ))}
           </div>

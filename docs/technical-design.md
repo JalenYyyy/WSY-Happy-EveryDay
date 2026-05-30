@@ -7,12 +7,11 @@
 - UI：React 19、Tailwind CSS、lucide-react
 - Database：SQLite
 - ORM：Prisma Client
-- Build config：`next.config.ts` 显式固定 `turbopack.root` 到当前仓库，避免上级目录存在其他 lockfile 时误判工作区根目录
+- Build config：`next.config.ts` 显式固定 `turbopack.root` 到当前仓库，避免上级目录存在其他 lockfile 时误判工作区根目录；同时把 Pi Agent 相关依赖设为 `serverExternalPackages`，避免 Turbopack 将其错误打进根服务端 chunk
 - Auth：自定义 Cookie Session
 - LLM（猫咪聊天）：OpenAI 兼容 `/v1/chat/completions`（`lib/llm.ts`）
 - LLM（Pi Agent）：`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`，使用同一组 LLM 环境变量
-- Local files：猫咪头像上传到 `public/uploads/cats`
-- Local files：用户头像上传到 `public/uploads/users`
+- Local files：猫圈图片上传到 `public/uploads/moments`
 
 ## 2. 目录结构
 
@@ -73,21 +72,19 @@ public/
 
 ### User
 
-保存固定用户账号。
+保存固定用户账号；当前产品在交互层保留名字、密码，以及“所有猫咪怎么称呼我”的个人化能力。
 
 关键字段：
 - `id`（默认账号使用固定 id 维护）
 - `username`
 - `name`
-- `avatarUrl`
-- `bio`
 - `password`
 
 密码当前以哈希形式存储；旧明文数据会在成功登录后自动迁移。
 
 ### Cat
 
-保存猫咪基础设定。
+保存猫咪基础信息；当前交互层允许编辑名字、性格、回复方式与补充设定，这些字段默认可为空。
 
 关键字段：
 - `name`
@@ -99,16 +96,12 @@ public/
 
 ### CatUserName
 
-保存每只猫对每个用户的专属关系信息。
-
-约束：
-- `catId + userId` 唯一。
+当前实现中用于兼容保存“所有猫咪对某个用户的通用称呼”。数据仍按猫咪维度落表，但写入时会同步到该用户的所有猫咪记录。
 
 关键字段：
+- `catId`
+- `userId`
 - `nickname`
-- `preference`
-- `memorySummary`
-- `relationship`
 
 ### Message
 
@@ -136,14 +129,6 @@ public/
 - `imageUrl`
 - `caption`
 - `createdAt`
-
-### CatMemory
-
-保存猫咪长期记忆摘要和关系状态。
-
-当前策略：
-- 每次用户发言后，将用户消息压缩成一行追加到摘要。
-- 最多保留最近 12 行。
 
 ### AppSetting
 
@@ -275,35 +260,32 @@ public/
 - `GET /api/auth/me`
   - 返回当前登录用户
 - `PATCH /api/auth/me`
-  - 仅更新当前登录用户自己的资料
-  - 支持修改 `username`、`name`、`bio`
+  - 当前仅允许把自己的名字改成新的名字
+  - 服务端会同步把 `username` 更新为相同值，并清空旧头像/简介残留
 - `POST /api/auth/me/avatar`
-  - 上传当前登录用户头像
-  - 限制 2MB
-  - 仅支持 png、jpg、webp、gif
-  - 服务端按文件头校验真实格式，而不是只信任 MIME type 或文件后缀
+  - 已停用，返回“当前版本只保留名字”
 
 ### Cats
 
 - `GET /api/cats`
   - 返回猫咪列表和用户列表
+  - 猫咪列表会带上“当前登录用户的通用称呼”
 - `POST /api/cats`
-  - 创建猫咪基础资料
+  - 创建猫咪
+  - 当前只接收 `name`
   - 重名返回 `409`
 - `PATCH /api/cats/:catId`
-  - 更新猫咪基础资料
+  - 更新猫咪名字、性格、回复方式、补充设定
 - `DELETE /api/cats/:catId`
   - 删除猫咪
   - 入参：`confirmName`
   - 服务端 trim 后与猫咪名称比对
   - 至少保留一只猫咪
 - `POST /api/cats/:catId/avatar`
-  - 上传头像
-  - 限制 2MB
-  - 仅支持 png、jpg、webp、gif
-  - 服务端按文件头校验真实格式，而不是只信任 MIME type 或文件后缀
+  - 已停用，返回“当前版本只保留名字”
 - `PATCH /api/cats/:catId/nicknames`
-  - 仅更新当前登录用户自己的称呼和偏好
+  - 更新当前登录用户的通用称呼
+  - 传空字符串时会清除该用户在所有猫咪下的称呼记录，恢复为直接叫用户名字
 
 ### Messages
 
@@ -315,8 +297,6 @@ public/
   - 图片仅支持 png、jpg、webp、gif，并校验文件头
   - 调用 LLM
   - 保存猫咪回复
-  - 更新共享长期记忆
-  - 更新当前用户的专属记忆和关系状态
   - 如果发送的是图片，会自动写入猫咪猫圈
 
 ### Moments
@@ -393,14 +373,7 @@ LLM_MODEL="deepseek-v4-pro"
 
 Prompt 由以下内容组成：
 - 猫咪名字
-- 性格
-- 语气
-- 背景故事
-- 当前用户称呼
-- 共享长期记忆摘要
-- 当前用户偏好
-- 当前用户专属记忆
-- 当前用户关系状态
+- 当前用户名字
 - 最近 14 条消息
 - 当前用户消息
 - 可选图片内容（当用户发送图片时）
@@ -441,13 +414,8 @@ prisma migrate deploy
 
 ## 8. 文件上传
 
-- 默认头像位于 `public/avatars`。
-- 用户上传头像位于 `public/uploads/users`。
-- 猫咪上传头像位于 `public/uploads/cats`。
-- 聊天图片 / 猫圈图片位于 `public/uploads/moments`。
+- 当前产品只保留聊天图片 / 猫圈图片上传，位于 `public/uploads/moments`。
 - 所有上传图片仅支持 png、jpg、webp、gif，且服务端会按文件头识别真实格式。
-- 删除猫咪时，如果头像路径以 `/uploads/cats/` 开头，会同步删除本地文件。
-- 替换猫咪头像时，会删除旧的上传头像文件。
 - 删除单条猫圈时，会同步删除该条对应的本地图片文件。
 
 生产建议：

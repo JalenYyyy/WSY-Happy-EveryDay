@@ -6,6 +6,13 @@ const configDir = path.dirname(fileURLToPath(import.meta.url));
 
 const nextConfig: NextConfig = {
   reactStrictMode: true,
+  serverExternalPackages: [
+    "@earendil-works/pi-agent-core",
+    "@earendil-works/pi-ai",
+    "@tavily/core",
+    "docx",
+    "typebox",
+  ],
   turbopack: {
     root: configDir,
   },

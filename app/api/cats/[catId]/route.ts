@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server";
+import { Prisma } from "@prisma/client";
 import { unlink } from "fs/promises";
 import path from "path";
 import { requireApiUser } from "@/lib/auth";
@@ -16,24 +17,28 @@ export async function PATCH(request: Request, { params }: Params) {
       tone?: string;
       backstory?: string;
     };
+    const name = body.name?.trim();
+
+    if (!name) {
+      return NextResponse.json({ error: "猫咪名字不能为空" }, { status: 400 });
+    }
 
     const cat = await prisma.cat.update({
       where: { id: catId },
       data: {
-        name: body.name?.trim(),
-        personality: body.personality?.trim(),
-        tone: body.tone?.trim(),
-        backstory: body.backstory?.trim(),
-      },
-      include: {
-        nicknames: { include: { user: { select: { id: true, name: true, avatarUrl: true } } } },
-        memory: true,
+        name,
+        personality: body.personality?.trim() || "",
+        tone: body.tone?.trim() || "",
+        backstory: body.backstory?.trim() || "",
       },
     });
 
     return NextResponse.json({ cat });
   } catch (error) {
     if (error instanceof Response) return error;
+    if (error instanceof Prisma.PrismaClientKnownRequestError && error.code === "P2002") {
+      return NextResponse.json({ error: "已经有同名猫咪了，请换一个名字" }, { status: 409 });
+    }
     return NextResponse.json({ error: "更新猫咪失败" }, { status: 500 });
   }
 }

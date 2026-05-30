@@ -11,7 +11,7 @@ import {
   Packer,
   AlignmentType,
 } from "docx";
-import { Type } from "@earendil-works/pi-ai";
+import { Type } from "typebox";
 import type { AgentTool } from "@earendil-works/pi-agent-core";
 import { tavily } from "@tavily/core";
 import { saveGeneratedFile } from "./file-store";

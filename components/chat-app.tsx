@@ -27,18 +27,7 @@ import {
 import clsx from "clsx";
 import { useRouter } from "next/navigation";
 
-type User = { id: string; username: string; name: string; avatarUrl: string | null; bio: string };
-type CatUserName = {
-  id: string;
-  catId: string;
-  userId: string;
-  nickname: string;
-  preference: string;
-  memorySummary: string;
-  relationship: string;
-  user: Pick<User, "id" | "name" | "avatarUrl">;
-};
-type CatMemory = { summary: string; relationship: string };
+type User = { id: string; username: string; name: string; avatarUrl: string | null };
 type Cat = {
   id: string;
   name: string;
@@ -46,9 +35,8 @@ type Cat = {
   personality: string;
   tone: string;
   backstory: string;
+  nickname: string;
   isDefault: boolean;
-  nicknames: CatUserName[];
-  memory: CatMemory | null;
   _count?: { messages: number };
 };
 type Message = {
@@ -118,22 +106,13 @@ type Props = {
   initialWhispers: WhisperOverview;
 };
 
-type CatDraft = typeof emptyCat & {
+type CatDraft = {
   name: string;
-  nickname: string;
-  preference: string;
-  avatarFile?: File | null;
 };
 
 const uploadAccept = "image/png,image/jpeg,image/webp,image/gif";
 const allowedUploadTypes = new Set(["image/png", "image/jpeg", "image/webp", "image/gif"]);
 const avatarUploadLimitBytes = 10 * 1024 * 1024;
-
-const emptyCat = {
-  personality: "亲人、好奇、喜欢陪伴。",
-  tone: "温柔自然，像熟悉的家人。",
-  backstory: "这是一只刚加入小家的猫咪。",
-};
 
 function isAllowedUploadType(file: File) {
   return allowedUploadTypes.has(file.type);
@@ -207,10 +186,6 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
   const selectedCat = useMemo(
     () => cats.find((cat) => cat.id === selectedCatId) || cats[0],
     [cats, selectedCatId],
-  );
-  const selectedCatProfile = useMemo(
-    () => selectedCat?.nicknames.find((item) => item.userId === sessionUser.id) || null,
-    [selectedCat, sessionUser.id],
   );
   const selectedMoment = useMemo(
     () => moments.find((moment) => moment.id === selectedMomentId) || null,
@@ -538,48 +513,11 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
     const response = await fetch("/api/cats", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        name: draft.name,
-        personality: draft.personality,
-        tone: draft.tone,
-        backstory: draft.backstory,
-      }),
+      body: JSON.stringify({ name: draft.name }),
     });
     const data = (await response.json()) as { cat?: Cat; error?: string };
     if (!response.ok || !data.cat) {
       throw new Error(data.error || "创建猫咪失败");
-    }
-
-    try {
-      const nicknameResponse = await fetch(`/api/cats/${data.cat.id}/nicknames`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: draft.nickname, preference: draft.preference }),
-      });
-      if (!nicknameResponse.ok) {
-        const nicknameData = (await nicknameResponse.json()) as { error?: string };
-        throw new Error(nicknameData.error || "称呼保存失败");
-      }
-
-      if (draft.avatarFile) {
-        const formData = new FormData();
-        formData.set("avatar", draft.avatarFile);
-        const avatarResponse = await fetch(`/api/cats/${data.cat.id}/avatar`, {
-          method: "POST",
-          body: formData,
-        });
-        if (!avatarResponse.ok) {
-          const avatarData = (await avatarResponse.json()) as { error?: string };
-          throw new Error(avatarData.error || "头像上传失败");
-        }
-      }
-    } catch (createError) {
-      await fetch(`/api/cats/${data.cat.id}`, {
-        method: "DELETE",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ confirmName: data.cat.name }),
-      }).catch(() => {});
-      throw createError;
     }
 
     const catsResponse = await fetch("/api/cats");
@@ -622,9 +560,9 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
             <UserAvatar user={sessionUser} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{sessionUser.name}</p>
-              <p className="truncate text-xs text-stone-500">{sessionUser.bio || "已登录，个人资料独立管理"}</p>
+              <p className="truncate text-xs text-stone-500">已登录</p>
             </div>
-            <button title="个人资料" onClick={() => setProfileOpen(true)} className="rounded-full p-2 text-stone-500 hover:bg-white">
+            <button title="账号安全" onClick={() => setProfileOpen(true)} className="rounded-full p-2 text-stone-500 hover:bg-white">
               <Settings2 size={17} />
             </button>
             <button title="退出登录" onClick={logout} className="rounded-full p-2 text-stone-500 hover:bg-white">
@@ -668,7 +606,6 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
                     <span className="truncate text-sm font-semibold">{cat.name}</span>
                     <span className="text-xs opacity-60">{cat._count?.messages || 0}</span>
                   </div>
-                  <p className="truncate text-xs opacity-70">{cat.personality}</p>
                 </div>
               </button>
             ))}
@@ -762,7 +699,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
                 <Avatar cat={selectedCat} size={42} />
                 <div className="min-w-0 flex-1">
                   <h2 className="truncate text-base font-semibold">{selectedCat.name}</h2>
-                  <p className="truncate text-xs text-stone-500">{selectedCatProfile?.relationship || selectedCat.memory?.relationship || "正在熟悉中"}</p>
+                  <p className="truncate text-xs text-stone-500">和 {selectedCat.name} 聊天中</p>
                 </div>
                 <div className="hidden items-center gap-1 rounded-full bg-stone-100 p-1 sm:flex">
                   <button
@@ -891,8 +828,6 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
       {settingsOpen && selectedCat ? (
         <CatSettings
           cat={selectedCat}
-          currentUser={sessionUser}
-          users={householdUsers}
           onClose={() => setSettingsOpen(false)}
           onSaved={(cat) => {
             setCats((previous) => previous.map((item) => (item.id === cat.id ? { ...item, ...cat } : item)));
@@ -912,19 +847,18 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
       {profileOpen ? (
         <UserProfileDialog
           user={sessionUser}
-          onClose={() => setProfileOpen(false)}
-          onUpdated={(user) => {
-            setSessionUser(user);
-            setHouseholdUsers((previous) => previous.map((item) => (item.id === user.id ? user : item)));
-            setNotice("个人资料已保存。");
+          selectedCat={selectedCat || null}
+          onNicknameSaved={(nickname) => {
+            setCats((previous) => previous.map((item) => ({ ...item, nickname })));
+            setNotice(nickname ? "通用称呼已保存。" : "已恢复为直接叫你的名字。");
           }}
+          onClose={() => setProfileOpen(false)}
         />
       ) : null}
 
       {createOpen ? (
         <CreateCatDialog
           initialName={nextCatName()}
-          currentUser={sessionUser}
           onClose={() => setCreateOpen(false)}
           onCreate={createCat}
         />
@@ -1001,11 +935,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
 function UserAvatar({ user, size }: { user: Pick<User, "name" | "avatarUrl">; size: number }) {
   const fallback = user.name.trim().charAt(0) || "用";
 
-  return user.avatarUrl ? (
-    <div className="shrink-0 overflow-hidden rounded-full bg-sage ring-1 ring-white/80" style={{ width: size, height: size }}>
-      <Image src={user.avatarUrl} alt={user.name} width={size} height={size} className="h-full w-full object-cover" />
-    </div>
-  ) : (
+  return (
     <div
       className="flex shrink-0 items-center justify-center rounded-full bg-sage text-sm font-semibold text-ink ring-1 ring-white/80"
       style={{ width: size, height: size }}
@@ -1016,9 +946,14 @@ function UserAvatar({ user, size }: { user: Pick<User, "name" | "avatarUrl">; si
 }
 
 function Avatar({ cat, size }: { cat: Pick<Cat, "avatarUrl" | "name">; size: number }) {
+  const fallback = cat.name.trim().charAt(0) || "猫";
+
   return (
-    <div className="shrink-0 overflow-hidden rounded-full bg-petal ring-1 ring-white/80" style={{ width: size, height: size }}>
-      <Image src={cat.avatarUrl} alt={cat.name} width={size} height={size} className="h-full w-full object-cover" />
+    <div
+      className="flex shrink-0 items-center justify-center rounded-full bg-petal text-sm font-semibold text-ink ring-1 ring-white/80"
+      style={{ width: size, height: size }}
+    >
+      {fallback}
     </div>
   );
 }
@@ -1449,7 +1384,15 @@ function WhisperComposerDialog({
         </header>
 
         <div className="space-y-4 p-5">
-          <TextArea label="内容" value={content} onChange={setContent} rows={5} />
+          <label className="block">
+            <span className="mb-2 block text-sm font-medium text-stone-600">内容</span>
+            <textarea
+              value={content}
+              onChange={(event) => setContent(event.target.value)}
+              rows={5}
+              className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400"
+            />
+          </label>
 
           <label className="block">
             <span className="mb-2 block text-sm font-medium text-stone-600">送达时间</span>
@@ -1796,38 +1739,25 @@ function MomentDeleteDialog({
 
 function UserProfileDialog({
   user,
+  selectedCat,
+  onNicknameSaved,
   onClose,
-  onUpdated,
 }: {
   user: User;
+  selectedCat: Cat | null;
+  onNicknameSaved: (nickname: string) => void;
   onClose: () => void;
-  onUpdated: (user: User) => void;
 }) {
-  const [form, setForm] = useState({
-    username: user.username,
-    name: user.name,
-    bio: user.bio,
-  });
-  const [avatarUrl, setAvatarUrl] = useState(user.avatarUrl);
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [error, setError] = useState("");
   const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null);
   const [recoveryLoading, setRecoveryLoading] = useState(true);
   const [recoveryGenerating, setRecoveryGenerating] = useState(false);
   const [recoveryError, setRecoveryError] = useState("");
   const [recoveryNotice, setRecoveryNotice] = useState("");
   const [newRecoveryCode, setNewRecoveryCode] = useState("");
-  const displayedAvatarUrl = avatarPreviewUrl || avatarUrl;
-
-  useEffect(() => {
-    return () => {
-      if (avatarPreviewUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(avatarPreviewUrl);
-      }
-    };
-  }, [avatarPreviewUrl]);
+  const [nicknameDraft, setNicknameDraft] = useState(selectedCat?.nickname || "");
+  const [nicknameSaving, setNicknameSaving] = useState(false);
+  const [nicknameError, setNicknameError] = useState("");
+  const [nicknameNotice, setNicknameNotice] = useState("");
 
   useEffect(() => {
     let canceled = false;
@@ -1855,91 +1785,11 @@ function UserProfileDialog({
     };
   }, []);
 
-  function selectAvatar(file?: File) {
-    if (!file) return;
-    if (file.size > avatarUploadLimitBytes) {
-      setError("原始头像不能超过 10MB");
-      return;
-    }
-    if (!isAllowedUploadType(file)) {
-      setError("请上传 png、jpg、webp 或 gif 图片");
-      return;
-    }
-
-    setError("");
-    setAvatarFile(file);
-    setAvatarPreviewUrl((previous) => {
-      if (previous?.startsWith("blob:")) {
-        URL.revokeObjectURL(previous);
-      }
-      return URL.createObjectURL(file);
-    });
-  }
-
-  async function submit(event: React.FormEvent) {
-    event.preventDefault();
-    if (saving) return;
-
-    const username = form.username.trim();
-    const name = form.name.trim();
-    const bio = form.bio.trim();
-
-    if (!username) {
-      setError("用户名不能为空");
-      return;
-    }
-
-    if (!name) {
-      setError("显示名称不能为空");
-      return;
-    }
-
-    setSaving(true);
-    setError("");
-
-    const response = await fetch("/api/auth/me", {
-      method: "PATCH",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        username,
-        name,
-        bio,
-      }),
-    });
-
-    const data = (await response.json()) as { user?: User; error?: string };
-
-    if (!response.ok || !data.user) {
-      setSaving(false);
-      setError(data.error || "保存个人资料失败");
-      return;
-    }
-
-    let updatedUser = data.user;
-    setAvatarUrl(data.user.avatarUrl);
-    setForm({ username: data.user.username, name: data.user.name, bio: data.user.bio });
-
-    if (avatarFile) {
-      const formData = new FormData();
-      formData.set("avatar", avatarFile);
-      const avatarResponse = await fetch("/api/auth/me/avatar", { method: "POST", body: formData });
-      const avatarData = (await avatarResponse.json()) as { user?: User; error?: string };
-
-      if (!avatarResponse.ok || !avatarData.user) {
-        setSaving(false);
-        onUpdated(data.user);
-        setError(avatarData.error || "头像上传失败");
-        return;
-      }
-
-      updatedUser = avatarData.user;
-      setAvatarUrl(avatarData.user.avatarUrl);
-    }
-
-    setSaving(false);
-    onUpdated(updatedUser);
-    onClose();
-  }
+  useEffect(() => {
+    setNicknameDraft(selectedCat?.nickname || "");
+    setNicknameError("");
+    setNicknameNotice("");
+  }, [selectedCat?.id, selectedCat?.nickname]);
 
   async function generateRecoveryCode() {
     if (recoveryGenerating) return;
@@ -1963,13 +1813,38 @@ function UserProfileDialog({
     setRecoveryNotice("新的恢复码已生成，只会显示这一次，请马上离线保存。");
   }
 
+  async function saveNickname() {
+    if (!selectedCat || nicknameSaving) return;
+
+    setNicknameSaving(true);
+    setNicknameError("");
+    setNicknameNotice("");
+
+    const response = await fetch(`/api/cats/${selectedCat.id}/nicknames`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ nickname: nicknameDraft }),
+    });
+    const data = (await response.json()) as { nickname?: string; error?: string };
+    setNicknameSaving(false);
+
+    if (!response.ok || typeof data.nickname !== "string") {
+      setNicknameError(data.error || "保存称呼失败");
+      return;
+    }
+
+    setNicknameDraft(data.nickname);
+    onNicknameSaved(data.nickname);
+    setNicknameNotice(data.nickname ? "已保存所有猫咪对你的通用称呼。" : `已恢复为直接叫你“${user.name}”。`);
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-stone-900/20 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="flex w-full max-w-md flex-col rounded-[28px] bg-[#fbfaf8] shadow-soft">
+      <div className="flex w-full max-w-md flex-col rounded-[28px] bg-[#fbfaf8] shadow-soft">
         <header className="flex h-16 items-center justify-between border-b border-stone-200 px-5">
           <div>
-            <h2 className="text-lg font-semibold">个人资料</h2>
-            <p className="text-xs text-stone-500">这里只会修改你自己的账号信息</p>
+            <h2 className="text-lg font-semibold">账号安全</h2>
+            <p className="text-xs text-stone-500">恢复码和所有猫咪通用的称呼都在这里设置</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 hover:bg-stone-100">
             <X size={21} />
@@ -1977,18 +1852,34 @@ function UserProfileDialog({
         </header>
 
         <div className="space-y-4 p-5">
-          <div className="flex items-center gap-4">
-            <UserAvatar user={{ name: form.name || user.name, avatarUrl: displayedAvatarUrl }} size={64} />
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm">
-              <Camera size={17} />
-              上传头像
-              <input type="file" accept={uploadAccept} className="hidden" onChange={(event) => selectAvatar(event.target.files?.[0])} />
-            </label>
+          <div className="rounded-2xl bg-stone-100 px-4 py-3 text-sm text-stone-600">
+            当前账号：<span className="font-semibold text-stone-900">{user.name}</span>
           </div>
-          <p className="-mt-1 text-xs text-stone-400">支持上传不超过 10MB 的原始头像，系统会自动压缩静态图片头像。</p>
-          <TextField label="登录用户名" value={form.username} onChange={(value) => setForm((previous) => ({ ...previous, username: value }))} />
-          <TextField label="显示名称" value={form.name} onChange={(value) => setForm((previous) => ({ ...previous, name: value }))} />
-          <TextArea label="个人简介" value={form.bio} onChange={(value) => setForm((previous) => ({ ...previous, bio: value }))} rows={3} />
+          {selectedCat ? (
+            <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4">
+              <div className="flex items-start justify-between gap-3">
+                <div>
+                  <p className="text-sm font-semibold text-stone-700">所有猫咪对你的称呼</p>
+                  <p className="mt-1 text-xs leading-5 text-stone-500">这里设置的是所有猫咪通用的称呼。留空时，它们都会直接叫你的名字。</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={saveNickname}
+                  disabled={nicknameSaving}
+                  className="inline-flex h-10 shrink-0 items-center gap-2 rounded-2xl bg-ink px-4 text-sm font-semibold text-white disabled:opacity-50"
+                >
+                  <Check size={16} />
+                  {nicknameSaving ? "保存中..." : "保存称呼"}
+                </button>
+              </div>
+              <div className="mt-3">
+                <TextField label="猫咪们会怎么叫你" value={nicknameDraft} onChange={setNicknameDraft} />
+              </div>
+              <p className="mt-3 text-xs leading-5 text-stone-500">例如可以填“小月”“阿泽”“宝宝”；保存后会同步应用到所有猫咪。如果想恢复默认，直接清空后保存即可。</p>
+              {nicknameNotice ? <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{nicknameNotice}</p> : null}
+              {nicknameError ? <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{nicknameError}</p> : null}
+            </section>
+          ) : null}
           <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4">
             <div className="flex items-start justify-between gap-3">
               <div>
@@ -2027,46 +1918,30 @@ function UserProfileDialog({
           <p className="rounded-2xl bg-stone-100 px-4 py-3 text-xs leading-5 text-stone-500">
             密码修改已移到登录页处理；忘记密码时可使用这里生成的恢复码自助重置。
           </p>
-          {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p> : null}
         </div>
 
-        <footer className="flex flex-col gap-2 border-t border-stone-200 p-4 sm:flex-row">
-          <button
-            type="submit"
-            disabled={saving}
-            className="flex h-12 flex-1 items-center justify-center gap-2 rounded-2xl bg-ink text-sm font-semibold text-white disabled:opacity-50"
-          >
-            <Check size={18} />
-            {saving ? "保存中..." : "保存资料"}
-          </button>
-          <button type="button" onClick={onClose} className="h-12 rounded-2xl bg-white px-5 text-sm font-semibold text-stone-600">
+        <footer className="border-t border-stone-200 p-4">
+          <button type="button" onClick={onClose} className="h-12 w-full rounded-2xl bg-ink px-5 text-sm font-semibold text-white">
             取消
           </button>
         </footer>
-      </form>
+      </div>
     </div>
   );
 }
 
 function CreateCatDialog({
   initialName,
-  currentUser,
   onClose,
   onCreate,
 }: {
   initialName: string;
-  currentUser: User;
   onClose: () => void;
   onCreate: (draft: CatDraft) => Promise<void>;
 }) {
   const [draft, setDraft] = useState<CatDraft>({
-    ...emptyCat,
     name: initialName,
-    nickname: currentUser.name,
-    preference: "喜欢自然、贴近生活的回应。",
-    avatarFile: null,
   });
-  const [avatarPreview, setAvatarPreview] = useState("/avatars/cat-cream.svg");
   const [creating, setCreating] = useState(false);
   const [error, setError] = useState("");
 
@@ -2080,11 +1955,6 @@ function CreateCatDialog({
       await onCreate({
         ...draft,
         name: draft.name.trim(),
-        personality: draft.personality.trim(),
-        tone: draft.tone.trim(),
-        backstory: draft.backstory.trim(),
-        nickname: draft.nickname.trim(),
-        preference: draft.preference.trim(),
       });
     } catch (createError) {
       setError(createError instanceof Error ? createError.message : "创建猫咪失败");
@@ -2093,88 +1963,25 @@ function CreateCatDialog({
     }
   }
 
-  function selectAvatar(file?: File) {
-    if (!file) return;
-    if (file.size > avatarUploadLimitBytes) {
-      setError("原始头像不能超过 10MB");
-      return;
-    }
-    if (!isAllowedUploadType(file)) {
-      setError("请上传 png、jpg、webp 或 gif 图片");
-      return;
-    }
-    setError("");
-    setDraft((previous) => ({ ...previous, avatarFile: file }));
-    setAvatarPreview((previous) => {
-      if (previous.startsWith("blob:")) URL.revokeObjectURL(previous);
-      return URL.createObjectURL(file);
-    });
-  }
-
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-stone-900/20 p-4 backdrop-blur-sm">
-      <form onSubmit={submit} className="flex max-h-[92vh] w-full max-w-lg flex-col rounded-[28px] bg-[#fbfaf8] shadow-soft">
+      <form onSubmit={submit} className="flex w-full max-w-lg flex-col rounded-[28px] bg-[#fbfaf8] shadow-soft">
         <header className="flex h-16 items-center justify-between border-b border-stone-200 px-5">
           <div>
             <h2 className="text-lg font-semibold">创建新猫咪</h2>
-            <p className="text-xs text-stone-500">填好信息后会直接进入聊天</p>
+            <p className="text-xs text-stone-500">现在只需要填写名字</p>
           </div>
           <button type="button" onClick={onClose} className="rounded-full p-2 hover:bg-stone-100">
             <X size={21} />
           </button>
         </header>
 
-        <div className="scrollbar-soft flex-1 space-y-5 overflow-y-auto p-5">
-          <div className="flex items-center gap-4">
-            <div className="shrink-0 overflow-hidden rounded-full bg-petal ring-1 ring-white/80" style={{ width: 72, height: 72 }}>
-              <Image src={avatarPreview} alt="新猫咪头像" width={72} height={72} className="h-full w-full object-cover" />
-            </div>
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm">
-              <Camera size={17} />
-              上传头像
-              <input type="file" accept={uploadAccept} className="hidden" onChange={(event) => selectAvatar(event.target.files?.[0])} />
-            </label>
-          </div>
-          <p className="-mt-2 text-xs text-stone-400">支持上传不超过 10MB 的原始头像，系统会自动压缩静态图片头像。</p>
-
+        <div className="space-y-5 p-5">
           <TextField
             label="名字"
             value={draft.name}
             onChange={(value) => setDraft((previous) => ({ ...previous, name: value }))}
           />
-          <TextArea
-            label="性格"
-            value={draft.personality}
-            onChange={(value) => setDraft((previous) => ({ ...previous, personality: value }))}
-          />
-          <TextArea
-            label="语气"
-            value={draft.tone}
-            onChange={(value) => setDraft((previous) => ({ ...previous, tone: value }))}
-          />
-          <TextArea
-            label="背景故事"
-            value={draft.backstory}
-            onChange={(value) => setDraft((previous) => ({ ...previous, backstory: value }))}
-          />
-
-          <div>
-            <p className="mb-3 text-sm font-semibold text-stone-600">你和这只猫的专属设置</p>
-            <div className="space-y-3 rounded-3xl bg-white/80 p-4">
-              <TextField
-                label="它怎么称呼你"
-                value={draft.nickname}
-                onChange={(value) => setDraft((previous) => ({ ...previous, nickname: value }))}
-              />
-              <TextArea
-                label="它和你相处时优先记住什么"
-                value={draft.preference}
-                onChange={(value) => setDraft((previous) => ({ ...previous, preference: value }))}
-                rows={3}
-              />
-              <p className="text-xs leading-5 text-stone-500">其他用户的称呼会先使用他们自己的显示名称，之后由他们自己再调整。</p>
-            </div>
-          </div>
           {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p> : null}
         </div>
 
@@ -2202,32 +2009,19 @@ function CreateCatDialog({
 
 function CatSettings({
   cat,
-  currentUser,
-  users,
   onClose,
   onSaved,
   onDeleted,
 }: {
   cat: Cat;
-  currentUser: User;
-  users: User[];
   onClose: () => void;
   onSaved: (cat: Cat) => void;
   onDeleted: (deletedCatId: string) => void;
 }) {
-  const currentProfile = cat.nicknames.find((item) => item.userId === currentUser.id);
-  const [form, setForm] = useState({
-    name: cat.name,
-    personality: cat.personality,
-    tone: cat.tone,
-    backstory: cat.backstory,
-  });
-  const [relationForm, setRelationForm] = useState({
-    nickname: currentProfile?.nickname || currentUser.name,
-    preference: currentProfile?.preference || "",
-  });
-  const [avatarFile, setAvatarFile] = useState<File | null>(null);
-  const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
+  const [name, setName] = useState(cat.name);
+  const [personality, setPersonality] = useState(cat.personality);
+  const [tone, setTone] = useState(cat.tone);
+  const [backstory, setBackstory] = useState(cat.backstory);
   const [saving, setSaving] = useState(false);
   const [deleting, setDeleting] = useState(false);
   const [deleteOpen, setDeleteOpen] = useState(false);
@@ -2236,85 +2030,37 @@ function CatSettings({
   const normalizedDeleteConfirmName = deleteConfirmName.trim();
   const canDelete = normalizedDeleteConfirmName === cat.name && !deleting;
 
-  useEffect(() => {
-    return () => {
-      if (avatarPreviewUrl?.startsWith("blob:")) {
-        URL.revokeObjectURL(avatarPreviewUrl);
-      }
-    };
-  }, [avatarPreviewUrl]);
-
   async function save() {
+    const trimmedName = name.trim();
+    if (!trimmedName) {
+      setError("猫咪名字不能为空");
+      return;
+    }
+
     setSaving(true);
     setError("");
-    const [catResponse, nicknameResponse] = await Promise.all([
-      fetch(`/api/cats/${cat.id}`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+    const catResponse = await fetch(`/api/cats/${cat.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: trimmedName,
+        personality,
+        tone,
+        backstory,
       }),
-      fetch(`/api/cats/${cat.id}/nicknames`, {
-        method: "PATCH",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ nickname: relationForm.nickname, preference: relationForm.preference }),
-      }),
-    ]);
-    if (!catResponse.ok || !nicknameResponse.ok) {
+    });
+    if (!catResponse.ok) {
+      const data = (await catResponse.json()) as { error?: string };
       setSaving(false);
-      setError("保存失败，请稍后再试");
+      setError(data.error || "保存失败，请稍后再试");
       return;
     }
 
     const data = (await catResponse.json()) as { cat: Cat };
-    const nicknameData = (await nicknameResponse.json()) as { cat?: Cat };
-    const savedCat = nicknameData.cat || data.cat;
-
-    if (avatarFile) {
-      const formData = new FormData();
-      formData.set("avatar", avatarFile);
-      const avatarResponse = await fetch(`/api/cats/${cat.id}/avatar`, { method: "POST", body: formData });
-      const avatarData = (await avatarResponse.json()) as { cat?: Cat; error?: string };
-      if (!avatarResponse.ok || !avatarData.cat) {
-        setSaving(false);
-        onSaved(savedCat);
-        setError(avatarData.error || "头像上传失败");
-        return;
-      }
-
-      setSaving(false);
-      onSaved(avatarData.cat);
-      onClose();
-      return;
-    }
 
     setSaving(false);
-    onSaved(savedCat);
+    onSaved(data.cat);
     onClose();
-  }
-
-  function selectAvatar(event: React.ChangeEvent<HTMLInputElement>) {
-    const file = event.target.files?.[0];
-    if (!file) return;
-    if (file.size > avatarUploadLimitBytes) {
-      setError("原始头像不能超过 10MB");
-      event.target.value = "";
-      return;
-    }
-    if (!isAllowedUploadType(file)) {
-      setError("请上传 png、jpg、webp 或 gif 图片");
-      event.target.value = "";
-      return;
-    }
-
-    setError("");
-    setAvatarFile(file);
-    setAvatarPreviewUrl((previous) => {
-      if (previous?.startsWith("blob:")) {
-        URL.revokeObjectURL(previous);
-      }
-      return URL.createObjectURL(file);
-    });
-    event.target.value = "";
   }
 
   async function deleteCat() {
@@ -2348,59 +2094,11 @@ function CatSettings({
           </button>
         </header>
         <div className="scrollbar-soft flex-1 space-y-5 overflow-y-auto p-5">
-          <div className="flex items-center gap-4">
-            <Avatar cat={{ name: cat.name, avatarUrl: avatarPreviewUrl || cat.avatarUrl }} size={72} />
-            <label className="inline-flex cursor-pointer items-center gap-2 rounded-2xl bg-white px-4 py-2 text-sm font-medium shadow-sm">
-              <Camera size={17} />
-              上传头像
-              <input type="file" accept={uploadAccept} className="hidden" onChange={selectAvatar} />
-            </label>
-          </div>
-          <p className="-mt-2 text-xs text-stone-400">支持上传不超过 10MB 的原始头像，系统会自动压缩静态图片头像。</p>
-
-          <TextField label="名字" value={form.name} onChange={(value) => setForm((previous) => ({ ...previous, name: value }))} />
-          <TextArea label="性格" value={form.personality} onChange={(value) => setForm((previous) => ({ ...previous, personality: value }))} />
-          <TextArea label="语气" value={form.tone} onChange={(value) => setForm((previous) => ({ ...previous, tone: value }))} />
-          <TextArea label="背景故事" value={form.backstory} onChange={(value) => setForm((previous) => ({ ...previous, backstory: value }))} />
-
-          <section className="space-y-4 rounded-3xl bg-white/80 p-4">
-            <div>
-              <p className="text-sm font-semibold text-stone-700">你的专属关系</p>
-              <p className="mt-1 text-xs leading-5 text-stone-500">这里只能改这只猫对你的称呼和对你聊天时优先参考的偏好。</p>
-            </div>
-            <TextField
-              label="它怎么称呼你"
-              value={relationForm.nickname}
-              onChange={(value) => setRelationForm((previous) => ({ ...previous, nickname: value }))}
-            />
-            <TextArea
-              label="它和你相处时优先记住什么"
-              value={relationForm.preference}
-              onChange={(value) => setRelationForm((previous) => ({ ...previous, preference: value }))}
-              rows={3}
-            />
-            <InfoCard title="你的关系状态" content={currentProfile?.relationship || "还在慢慢熟悉中。"} />
-            <InfoCard title="你的专属记忆" content={currentProfile?.memorySummary || "暂时还没有专属记忆。开始聊天后会逐步累积。"} />
-          </section>
-
-          <section className="space-y-3 rounded-3xl bg-stone-100/80 p-4">
-            <p className="text-sm font-semibold text-stone-700">其他用户的专属称呼</p>
-            {users
-              .filter((user) => user.id !== currentUser.id)
-              .map((user) => {
-                const profile = cat.nicknames.find((item) => item.userId === user.id);
-                return (
-                  <div key={user.id} className="flex items-center gap-3 rounded-2xl bg-white px-3 py-3">
-                    <UserAvatar user={user} size={36} />
-                    <div className="min-w-0 flex-1">
-                      <p className="truncate text-sm font-medium text-stone-700">{user.name}</p>
-                      <p className="truncate text-xs text-stone-500">{profile?.nickname || user.name}</p>
-                    </div>
-                    <span className="text-xs text-stone-400">仅本人可修改</span>
-                  </div>
-                );
-              })}
-          </section>
+          <TextField label="名字" value={name} onChange={setName} />
+          <TextAreaField label="性格" value={personality} onChange={setPersonality} placeholder="例如：黏人、会撒娇、偶尔有点傲娇" />
+          <TextAreaField label="回复方式" value={tone} onChange={setTone} placeholder="例如：短句、温柔、像即时聊天，不要太书面" />
+          <TextAreaField label="补充设定" value={backstory} onChange={setBackstory} placeholder="可留空。比如喜欢什么、常见习惯、你想让它记住的背景。" />
+          <p className="rounded-2xl bg-stone-100 px-4 py-3 text-xs leading-5 text-stone-500">这些设定默认是空的；保存后会直接影响这只猫后续的回复风格。</p>
 
           <section className="rounded-3xl border border-red-100 bg-red-50/70 p-4">
             <div className="flex items-start gap-3">
@@ -2471,7 +2169,7 @@ function CatSettings({
         <footer className="border-t border-stone-200 p-4">
           <button onClick={save} disabled={saving || deleting} className="flex h-12 w-full items-center justify-center gap-2 rounded-2xl bg-ink text-sm font-semibold text-white disabled:opacity-50">
             <Check size={18} />
-            {saving ? "保存中..." : "保存设定"}
+            {saving ? "保存中..." : "保存设置"}
           </button>
         </footer>
       </aside>
@@ -2498,31 +2196,28 @@ function TextField({
   );
 }
 
-function TextArea({
+function TextAreaField({
   label,
   value,
   onChange,
-  rows = 4,
+  placeholder,
 }: {
   label: string;
   value: string;
   onChange: (value: string) => void;
-  rows?: number;
+  placeholder?: string;
 }) {
   return (
     <label className="block">
       <span className="mb-2 block text-sm font-medium text-stone-600">{label}</span>
-      <textarea value={value} onChange={(event) => onChange(event.target.value)} rows={rows} className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm leading-6 outline-none focus:border-stone-400" />
+      <textarea
+        value={value}
+        onChange={(event) => onChange(event.target.value)}
+        placeholder={placeholder}
+        rows={4}
+        className="w-full rounded-2xl border border-stone-200 bg-white px-4 py-3 text-sm outline-none focus:border-stone-400"
+      />
     </label>
-  );
-}
-
-function InfoCard({ title, content }: { title: string; content: string }) {
-  return (
-    <div className="rounded-2xl border border-stone-200 bg-[#fbfaf8] px-4 py-3">
-      <p className="text-xs font-medium text-stone-500">{title}</p>
-      <p className="mt-1 whitespace-pre-wrap text-sm leading-6 text-stone-700">{content}</p>
-    </div>
   );
 }
 
