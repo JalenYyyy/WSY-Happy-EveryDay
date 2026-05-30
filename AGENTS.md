@@ -28,6 +28,14 @@
 - There is no automated test suite yet. For behavior changes, validate with `npm run lint` and the relevant manual smoke checks from [docs/development-guide.md](docs/development-guide.md).
 - On Windows, stop the dev server before running `npm run build` if Prisma DLLs are locked.
 - Preserve current product constraints unless the task asks otherwise: danger actions require a confirmation step, avatars are stored under `public/uploads/cats/`, and the UI stays light, compact, and hand-crafted.
+- **After every code change, update the relevant docs in the same task — do not defer doc updates to a follow-up.** Apply the following rules:
+  - New feature or behavior change → update [docs/progress-and-roadmap.md](docs/progress-and-roadmap.md) (add to "已完成" and "最近完成的关键变更") and [docs/product-requirements.md](docs/product-requirements.md) ("已实现功能").
+  - New or changed API endpoint → update [docs/technical-design.md](docs/technical-design.md) (API design section).
+  - New directory, module, or architectural pattern → update [docs/technical-design.md](docs/technical-design.md) (directory structure and relevant section).
+  - New or changed smoke-test step → update [docs/development-guide.md](docs/development-guide.md) (functional test checklist).
+  - New environment variable or startup step → update [docs/development-guide.md](docs/development-guide.md) (env vars and runbook) and this file's Runbook section.
+  - New known limitation or tech debt → update [docs/progress-and-roadmap.md](docs/progress-and-roadmap.md) (tech debt section).
+  - Schema change → also update [docs/technical-design.md](docs/technical-design.md) (data model section).
 
 ## Codebase Map
 

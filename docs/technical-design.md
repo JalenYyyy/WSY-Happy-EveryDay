@@ -8,7 +8,8 @@
 - Database：SQLite
 - ORM：Prisma Client
 - Auth：自定义 Cookie Session
-- LLM：OpenAI 兼容 `/v1/chat/completions`
+- LLM（猫咪聊天）：OpenAI 兼容 `/v1/chat/completions`（`lib/llm.ts`）
+- LLM（Pi Agent）：`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`，使用同一组 LLM 环境变量
 - Local files：猫咪头像上传到 `public/uploads/cats`
 - Local files：用户头像上传到 `public/uploads/users`
 
@@ -19,21 +20,48 @@ app/
   api/
     auth/
     cats/
+    pi/
+      sessions/
+        [id]/
+          prompt/      # POST → SSE 流
+          abort/       # POST → 中止
+          events/      # 桩（未实现）
+          model/       # 桩（未实现）
+          steer/       # 桩（未实现）
+          thinking/    # 桩（未实现）
+          upload/      # POST → 上传文件（图片 + 文本）
+          files/
+            [...path]/ # GET → 下载生成的文件
+      commands/        # 桩（未实现）
+      models/          # 桩（未实现）
+    whispers/
+  agent/
+    page.tsx           # 受保护的 /agent 页面
   login/
   page.tsx
 components/
   chat-app.tsx
+  agent/
+    chat-ui.tsx        # ChatGPT 风格 Agent UI
 lib/
   auth.ts
   llm.ts
   prisma.ts
+  pi/
+    model.ts           # 构造 pi-ai 模型对象
+    tools.ts           # read_file / write_file / bash / web_search / fetch_url / generate_word_doc / generate_text_file
+    agent-manager.ts   # 全局会话 Map 管理
+    file-store.ts      # 会话文件存储（上传 / 生成文件路径管理）
 prisma/
   schema.prisma
   init-db.ts
   seed.ts
 public/
   avatars/
-  uploads/cats/
+  uploads/
+    cats/
+    users/
+    moments/
 ```
 
 ## 3. 数据模型
@@ -255,6 +283,36 @@ public/
 - `POST /api/whispers/read`
   - 将当前可见的悄悄话留言卡与回复标记为已读
 
+### Pi Agent
+
+- `POST /api/pi/sessions`
+  - 创建新 Agent 会话
+  - 出参：`{ sessionId: string }`
+- `DELETE /api/pi/sessions/:id`
+  - 从内存中删除 Agent 会话
+- `POST /api/pi/sessions/:id/prompt`
+  - 向 Agent 发送消息，以 SSE 流返回事件序列
+  - 入参：`{ message: string }`
+  - SSE 事件格式：`data: { type, ... }\n\n`
+    - `text_delta`：`{ type, delta: string }` — 文本增量
+    - `tool_start`：`{ type, name, label, args }` — 工具调用开始
+    - `tool_end`：`{ type, name, result: string }` — 工具调用结束
+    - `agent_end`：`{ type }` — 本轮生成结束
+    - `error`：`{ type, message: string }` — 错误
+- `POST /api/pi/sessions/:id/abort`
+  - 中止当前正在进行的生成
+  - 出参：`{ ok: true }`
+- `POST /api/pi/sessions/:id/upload`
+  - 上传文件（multipart/form-data，字段名 `file`，可多文件）
+  - 支持图片（PNG/JPG/WEBP/GIF）和文本文件（txt/md/csv/json/html 等）
+  - 单文件限制 20MB
+  - 出参：`{ files: Array<{ id, name, mimeType, size, textContent? }> }`
+- `GET /api/pi/sessions/:id/files`
+  - 列出该会话已生成的可下载文件
+  - 出参：`{ files: Array<{ name, size, downloadPath }> }`
+- `GET /api/pi/sessions/:id/files/:filename`
+  - 下载指定文件（流式返回，附带 Content-Disposition）
+
 ## 6. LLM 接入
 
 逻辑位于 `lib/llm.ts`。
@@ -335,3 +393,79 @@ prisma migrate deploy
 生产建议：
 - 改为 S3、Cloudflare R2、阿里 OSS 等对象存储。
 - 数据库只保存对象 URL 或 key。
+
+## 9. Pi Agent 架构
+
+### 依赖包
+
+- `@earendil-works/pi-agent-core`：Agent 运行时，提供 `Agent` 类和工具调用协议。
+- `@earendil-works/pi-ai`：统一 LLM API 抽象，提供 `Model` 类型和 TypeBox 重导出（`Type`）。
+
+### 关键模块
+
+**`lib/pi/model.ts`**
+
+从环境变量构造 `Model<"openai-completions">` 对象，供 `Agent` 使用。
+
+```ts
+{
+  id: process.env.LLM_MODEL ?? "deepseek-chat",
+  api: "openai-completions",
+  provider: "custom",
+  baseUrl: process.env.LLM_BASE_URL ?? "",
+  // ...
+}
+```
+
+**`lib/pi/tools.ts`**
+
+定义三个内置工具，参数使用 TypeBox `Type.Object` 描述：
+
+| 工具名 | 功能 | 沙盒策略 |
+|---|---|---|
+| `read_file` | 读取文件内容 | path.resolve 限制在 cwd |
+| `write_file` | 写入文件内容 | path.resolve 限制在 cwd |
+| `bash` | 执行 Shell 命令 | cwd = process.cwd()，超时 30s |
+| `web_search` | Tavily 关键词搜索，返回摘要和链接 | 需要 `TAVILY_API_KEY`，默认 5 条结果 |
+| `fetch_url` | 抓取网页纯文本内容 | 15s 超时，输出截断至 4000 字 |
+
+Windows 兼容：`exec` 使用 `shell: true`，不依赖 `/bin/bash`。
+
+工具数组：`agentTools`（无联网）和 `webAgentTools`（含 `web_search` + `fetch_url`，Agent 默认使用此数组）。
+
+**`lib/pi/agent-manager.ts`**
+
+使用 `global.agentSessions: Map<string, Agent>` 管理会话，Next.js dev 热重载安全。
+
+系统提示中额外约束了 Agent 行为：
+
+- 严格按用户请求执行，不自行扩展输出形式。
+- 只有用户明确要求导出文档或下载文件时，才允许调用 `generate_word_doc` / `generate_text_file`。
+- 如果用户目标、范围或输出格式不清楚，先追问澄清，再决定是否调用工具。
+
+```ts
+createSession(id)  // 创建并存储 Agent 实例
+getSession(id)     // 获取已有 Agent
+deleteSession(id)  // 删除并释放 Agent
+```
+
+### SSE 流协议
+
+前端使用 `fetch` + `ReadableStream` reader（不用 `EventSource`，因其不支持 POST）。
+
+每帧格式：
+
+```
+data: {"type":"text_delta","delta":"..."}\n\n
+data: {"type":"tool_start","name":"bash","label":"Run Command","args":{...}}\n\n
+data: {"type":"tool_end","name":"bash","result":"..."}\n\n
+data: {"type":"agent_end"}\n\n
+```
+
+### 安全注意事项
+
+- `bash` 工具目前没有命令白名单，Agent 可执行任意命令，**仅适合本地受信使用**。
+- 生产环境须限制执行路径或改用容器沙盒。
+- Agent 会话不持久化，进程重启后全部丢失。
+- 当前没有会话数量上限，长时间运行应增加 LRU 清理。
+

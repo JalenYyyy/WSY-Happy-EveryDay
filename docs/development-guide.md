@@ -41,6 +41,7 @@ APP_SESSION_SECRET="local-dev-secret-change-before-production"
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY=""
 LLM_MODEL="deepseek-v4-pro"
+TAVILY_API_KEY=""   # Pi Agent 联网搜索，从 app.tavily.com 获取
 ```
 
 说明：开发环境未配置 `APP_SESSION_SECRET` 时会使用本地默认值；生产环境现在会直接报错并拒绝启动。默认账号密码会在 seed 或首次成功登录后写入为哈希值。
@@ -75,7 +76,8 @@ npm run db:reset # 重置数据库并重新 seed
 主要文件：
 
 ```text
-components/chat-app.tsx
+components/chat-app.tsx        # 猫咪聊天主界面
+components/agent/chat-ui.tsx   # Pi Agent 对话界面
 app/globals.css
 tailwind.config.ts
 ```
@@ -94,8 +96,8 @@ npm run build
 主要目录：
 
 ```text
-app/api/
-lib/
+app/api/           # 所有 API 路由
+lib/               # 服务端逻辑（auth、llm、pi/...）
 prisma/
 ```
 
@@ -201,14 +203,28 @@ npm run db:reset
 - 删除单条猫圈时，对应上传图片文件也应一并清理。
 - 删除猫咪时，相关猫圈图片会一起清理。
 
+### Pi Agent（`/agent`）
+
+- 未登录直接访问 `/agent`，应跳转 `/login`。
+- 登录后访问 `/agent`，页面正常渲染，侧边栏有「New Chat」和会话列表。
+- 发送消息后，消息气泡出现在右侧，Assistant 回复从左侧流式渲染。
+- 调用工具时，消息下方出现可折叠的工具卡片，显示工具名、参数和结果。
+- 点击「停止生成」按钮后，流式输出立即停止，按钮切换回发送状态。
+- 新建多个会话，切换会话后，消息历史独立、互不干扰。
+- 删除会话（垃圾桶图标）后，会话从侧边栏移除。
+- 点击侧边栏「←」按钮，返回猫咪聊天首页。
+- 猫咪聊天主界面侧边栏用户信息区应显示 Bot 图标按钮，点击跳转 `/agent`。
+
 ## 8. 代码约定
 
 - TypeScript 开启 `strict`。
 - 手写 UI 优先保持苹果风、淡色、紧凑。
+- Agent UI 独立暗色风格，参考 ChatGPT。
 - 图标使用 `lucide-react`。
 - 危险操作必须二次确认。
 - 不把 API key 暴露到前端。
 - 新增持久化字段时同时更新文档和 seed。
+- Pi Agent 工具使用 TypeBox `Type` 描述参数（从 `@earendil-works/pi-ai` 引入，不单独安装 `@sinclair/typebox`）。
 
 ## 9. 已知注意事项
 
@@ -217,6 +233,9 @@ npm run db:reset
 - 当前头像上传在本地磁盘，云部署时需要对象存储。
 - 当前共享记忆和用户专属记忆都还是简单摘要追加，不是智能总结。
 - 当前没有自动化测试框架，依赖手动/API 冒烟测试。
+- Pi Agent 会话存储在进程内存，服务重启后全部丢失——当前是 MVP 行为，不是 bug。
+- Pi Agent 的 `bash` 工具没有命令白名单，仅适合本地受信环境使用，不应暴露到公网。
+- `@earendil-works/pi-ai` 重导出了 TypeBox 的 `Type`，工具参数定义应从该包引入，不要单独安装 `@sinclair/typebox`（版本可能不兼容）。
 
 ## 10. 上线前检查清单
 

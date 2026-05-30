@@ -4,6 +4,7 @@ import Image from "next/image";
 import { useEffect, useMemo, useRef, useState } from "react";
 import {
   BellDot,
+  Bot,
   Camera,
   ChevronDown,
   ChevronUp,
@@ -21,6 +22,7 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
+import { useRouter } from "next/navigation";
 
 type User = { id: string; username: string; name: string; avatarUrl: string | null; bio: string };
 type CatUserName = {
@@ -163,6 +165,7 @@ async function readApiResult<T>(response: Response) {
 }
 
 export default function ChatApp({ currentUser, initialCats, users, initialWhispers }: Props) {
+  const router = useRouter();
   const [sessionUser, setSessionUser] = useState(currentUser);
   const [householdUsers, setHouseholdUsers] = useState(users);
   const [cats, setCats] = useState(initialCats);
@@ -597,7 +600,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
             </button>
           </div>
 
-          <div className="mb-4 flex items-center gap-2 rounded-2xl bg-cream px-3 py-3">
+          <div className="mb-2 flex items-center gap-2 rounded-2xl bg-cream px-3 py-3">
             <UserAvatar user={sessionUser} size={36} />
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{sessionUser.name}</p>
@@ -610,6 +613,15 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
               <LogOut size={17} />
             </button>
           </div>
+
+          <button
+            onClick={() => router.push("/agent")}
+            className="mb-4 flex w-full items-center gap-2 rounded-2xl bg-cream px-3 py-2.5 text-stone-600 hover:bg-stone-200 transition-colors text-left"
+            title="进入 Pi Agent"
+          >
+            <Bot size={17} className="shrink-0" />
+            <span className="text-sm font-medium">Pi Agent</span>
+          </button>
 
           <div className="mb-3 flex items-center justify-between">
             <span className="text-sm font-semibold text-stone-600">叶子是老大</span>

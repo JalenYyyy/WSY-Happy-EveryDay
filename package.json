@@ -25,8 +25,12 @@
   },
   "homepage": "https://github.com/JalenYyyy/WSY-Happy-EveryDay#readme",
   "dependencies": {
+    "@earendil-works/pi-agent-core": "^0.74.2",
+    "@earendil-works/pi-ai": "^0.74.2",
     "@prisma/client": "^5.22.0",
+    "@tavily/core": "^0.7.3",
     "clsx": "^2.1.1",
+    "docx": "^9.7.1",
     "lucide-react": "^1.16.0",
     "next": "^16.2.6",
     "react": "^19.2.6",
