@@ -198,6 +198,24 @@ async function main() {
   `);
 
   await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "PasswordRecovery" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "userId" TEXT NOT NULL UNIQUE,
+      "codeHash" TEXT NOT NULL,
+      "codeSuffix" TEXT NOT NULL,
+      "expiresAt" DATETIME NOT NULL,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      CONSTRAINT "PasswordRecovery_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "PasswordRecovery_userId_key"
+    ON "PasswordRecovery"("userId");
+  `);
+
+  await prisma.$executeRawUnsafe(`
     CREATE TABLE IF NOT EXISTS "WhisperCard" (
       "id" TEXT NOT NULL PRIMARY KEY,
       "senderId" TEXT NOT NULL,
@@ -228,6 +246,42 @@ async function main() {
   await prisma.$executeRawUnsafe(`
     CREATE INDEX IF NOT EXISTS "WhisperCard_recipientId_readAt_idx"
     ON "WhisperCard"("recipientId", "readAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE TABLE IF NOT EXISTS "AgentFile" (
+      "id" TEXT NOT NULL PRIMARY KEY,
+      "sessionId" TEXT NOT NULL,
+      "userId" TEXT NOT NULL,
+      "kind" TEXT NOT NULL,
+      "originalName" TEXT NOT NULL,
+      "storedName" TEXT NOT NULL,
+      "mimeType" TEXT NOT NULL,
+      "size" INTEGER NOT NULL,
+      "storagePath" TEXT NOT NULL UNIQUE,
+      "downloadPath" TEXT,
+      "status" TEXT NOT NULL DEFAULT 'ACTIVE',
+      "expiresAt" DATETIME NOT NULL,
+      "lastDownloadedAt" DATETIME,
+      "createdAt" DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+      "updatedAt" DATETIME NOT NULL,
+      CONSTRAINT "AgentFile_userId_fkey" FOREIGN KEY ("userId") REFERENCES "User" ("id") ON DELETE CASCADE ON UPDATE CASCADE
+    );
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE UNIQUE INDEX IF NOT EXISTS "AgentFile_sessionId_kind_storedName_key"
+    ON "AgentFile"("sessionId", "kind", "storedName");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AgentFile_sessionId_status_expiresAt_idx"
+    ON "AgentFile"("sessionId", "status", "expiresAt");
+  `);
+
+  await prisma.$executeRawUnsafe(`
+    CREATE INDEX IF NOT EXISTS "AgentFile_userId_status_expiresAt_idx"
+    ON "AgentFile"("userId", "status", "expiresAt");
   `);
 
   await prisma.$executeRawUnsafe(`

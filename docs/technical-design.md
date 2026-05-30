@@ -7,6 +7,7 @@
 - UI：React 19、Tailwind CSS、lucide-react
 - Database：SQLite
 - ORM：Prisma Client
+- Build config：`next.config.ts` 显式固定 `turbopack.root` 到当前仓库，避免上级目录存在其他 lockfile 时误判工作区根目录
 - Auth：自定义 Cookie Session
 - LLM（猫咪聊天）：OpenAI 兼容 `/v1/chat/completions`（`lib/llm.ts`）
 - LLM（Pi Agent）：`@earendil-works/pi-agent-core` + `@earendil-works/pi-ai`，使用同一组 LLM 环境变量
@@ -19,6 +20,7 @@
 app/
   api/
     auth/
+      recovery/        # GET/POST/PATCH → 恢复码状态、生成、重置密码
     cats/
     pi/
       sessions/
@@ -45,6 +47,7 @@ components/
     chat-ui.tsx        # ChatGPT 风格 Agent UI
 lib/
   auth.ts
+  auth-recovery.ts
   llm.ts
   prisma.ts
   pi/
@@ -56,6 +59,8 @@ prisma/
   schema.prisma
   init-db.ts
   seed.ts
+scripts/
+  pi-file-maintenance.ts # 清理 Pi Agent 过期文件与孤儿文件
 public/
   avatars/
   uploads/
@@ -149,6 +154,46 @@ public/
 - 持久化登录失败节流状态
 - 持久化高频写接口的动作节流状态
 
+### PasswordRecovery
+
+保存每个用户当前生效的一组忘记密码恢复码。
+
+关键字段：
+- `userId`
+- `codeHash`
+- `codeSuffix`
+- `expiresAt`
+- `createdAt`
+- `updatedAt`
+
+当前策略：
+- 每个用户同时只保留一组恢复码，重新生成会覆盖旧码。
+- 恢复码以一次性明文返回前端，数据库只保存哈希和尾号。
+- 恢复成功后会立刻删除记录，避免重复使用。
+
+### AgentFile
+
+保存 Pi Agent 上传文件和生成文件的元数据台账。
+
+关键字段：
+- `sessionId`
+- `userId`
+- `kind`（`UPLOAD` / `GENERATED`）
+- `originalName`
+- `storedName`
+- `mimeType`
+- `size`
+- `storagePath`
+- `downloadPath`
+- `status`（`ACTIVE` / `EXPIRED` / `DELETED`）
+- `expiresAt`
+- `lastDownloadedAt`
+
+当前策略：
+- 上传文件默认保留 24 小时。
+- 生成文件默认保留 7 天。
+- 过期文件和孤儿文件由清理脚本以及运行时维护逻辑定期清除。
+
 ### WhisperCard
 
 保存双用户之间的悄悄话留言卡。
@@ -191,10 +236,15 @@ public/
 - 服务端生成 HMAC 签名 Session Token。
 - Token 写入 HttpOnly Cookie：`cat_session`。
 - Session Token 会绑定当前密码状态；修改密码后，旧登录态会自动失效。
+- 登录后的个人资料弹窗支持生成一组恢复码；恢复码只展示一次，默认 30 天过期。
+- 登录页可通过恢复码重置密码；如果服务端配置了 `ADMIN_RESET_PASSWORD`，也可改用管理员密码协助重置。
+- 无论使用恢复码还是管理员密码，重置成功后都会同步清空该恢复码，并让旧登录态全部失效。
 - API 使用 `requireApiUser()` 校验登录。
 - 页面使用 `requireUser()` 校验登录并跳转 `/login`。
 - 登录接口带有基础失败节流：同一来源对同一用户名连续输错 5 次后会临时锁定 10 分钟。
+- 恢复码重置接口也有独立失败节流：同一来源对同一用户名连续输错 5 次后会临时锁定 10 分钟。
 - 节流状态当前持久化在 `AppSetting` 中，key 前缀为 `loginThrottle:`，因此服务重启后不会立刻丢失锁定状态。
+- 恢复码节流状态同样持久化在 `AppSetting` 中，key 前缀为 `passwordRecoveryThrottle:`。
 
 生产注意事项：
 - 必须设置强随机 `APP_SESSION_SECRET`。
@@ -214,6 +264,14 @@ public/
   - 入参：`username`、`currentPassword`、`newPassword`
 - `POST /api/auth/logout`
   - 清除 Cookie
+- `GET /api/auth/recovery`
+  - 返回当前登录用户的恢复码配置状态
+- `POST /api/auth/recovery`
+  - 为当前登录用户生成新的恢复码
+  - 返回恢复码明文（仅本次）和当前状态
+- `PATCH /api/auth/recovery`
+  - 使用恢复码或管理员密码重置指定用户的密码
+  - 入参：`username`、`newPassword`，以及 `recoveryCode` / `adminPassword` 二选一
 - `GET /api/auth/me`
   - 返回当前登录用户
 - `PATCH /api/auth/me`
@@ -306,12 +364,14 @@ public/
   - 上传文件（multipart/form-data，字段名 `file`，可多文件）
   - 支持图片（PNG/JPG/WEBP/GIF）和文本文件（txt/md/csv/json/html 等）
   - 单文件限制 20MB
-  - 出参：`{ files: Array<{ id, name, mimeType, size, textContent? }> }`
+  - 出参：`{ files: Array<{ id, name, mimeType, size, expiresAt, textContent? }> }`
 - `GET /api/pi/sessions/:id/files`
   - 列出该会话已生成的可下载文件
-  - 出参：`{ files: Array<{ name, size, downloadPath }> }`
+  - 只返回未过期且状态为有效的生成文件
+  - 出参：`{ files: Array<{ name, size, expiresAt, downloadPath }> }`
 - `GET /api/pi/sessions/:id/files/:filename`
   - 下载指定文件（流式返回，附带 Content-Disposition）
+  - 仅允许下载未过期且属于当前用户当前会话的文件
 
 ## 6. LLM 接入
 
@@ -433,6 +493,8 @@ Windows 兼容：`exec` 使用 `shell: true`，不依赖 `/bin/bash`。
 
 工具数组：`agentTools`（无联网）和 `webAgentTools`（含 `web_search` + `fetch_url`，Agent 默认使用此数组）。
 
+文档生成工具在执行时会从 `AsyncLocalStorage` 读取 `sessionId + userId`，并把生成文件登记到 `AgentFile` 元数据表。
+
 **`lib/pi/agent-manager.ts`**
 
 使用 `global.agentSessions: Map<string, Agent>` 管理会话，Next.js dev 热重载安全。
@@ -448,6 +510,16 @@ createSession(id)  // 创建并存储 Agent 实例
 getSession(id)     // 获取已有 Agent
 deleteSession(id)  // 删除并释放 Agent
 ```
+
+**`lib/pi/file-store.ts`**
+
+统一处理 Pi Agent 的文件落盘、元数据登记和清理逻辑：
+
+- 上传文件写入 `tmp/pi/<sessionId>/uploads/`
+- 生成文件写入 `tmp/pi/<sessionId>/generated/`
+- 所有文件同步登记到 `AgentFile`
+- 下载和列表以数据库元数据为准，不直接扫描目录
+- 定期清理过期文件和孤儿文件
 
 ### SSE 流协议
 

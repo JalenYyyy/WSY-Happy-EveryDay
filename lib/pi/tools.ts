@@ -22,7 +22,7 @@ const execAsync = promisify(exec);
 const WORKSPACE = process.cwd();
 
 /** AsyncLocalStorage for per-request session context (avoids module-level races) */
-export const asyncSession = new AsyncLocalStorage<{ sessionId: string }>();
+export const asyncSession = new AsyncLocalStorage<{ sessionId: string; userId: string }>();
 
 function isSubPath(parent: string, child: string) {
   const relative = path.relative(parent, child);
@@ -313,8 +313,8 @@ export const generateWordDocTool: AgentTool = {
   }),
   execute: async (_id, params) => {
     const p = params as { filename: string; title: string; content: string };
-    const sessionId = asyncSession.getStore()?.sessionId;
-    if (!sessionId) {
+    const context = asyncSession.getStore();
+    if (!context) {
       return { content: [{ type: "text", text: "Error: no active session context." }], details: {} };
     }
 
@@ -335,7 +335,7 @@ export const generateWordDocTool: AgentTool = {
     });
 
     const buffer = Buffer.from(await Packer.toBuffer(doc));
-    const file = await saveGeneratedFile(sessionId, filename, buffer);
+    const file = await saveGeneratedFile(context.sessionId, context.userId, filename, buffer);
 
     return {
       content: [
@@ -365,13 +365,13 @@ export const generateTextFileTool: AgentTool = {
   }),
   execute: async (_id, params) => {
     const p = params as { filename: string; content: string };
-    const sessionId = asyncSession.getStore()?.sessionId;
-    if (!sessionId) {
+    const context = asyncSession.getStore();
+    if (!context) {
       return { content: [{ type: "text", text: "Error: no active session context." }], details: {} };
     }
 
     const buffer = Buffer.from(p.content, "utf-8");
-    const file = await saveGeneratedFile(sessionId, p.filename, buffer);
+    const file = await saveGeneratedFile(context.sessionId, context.userId, p.filename, buffer);
 
     return {
       content: [

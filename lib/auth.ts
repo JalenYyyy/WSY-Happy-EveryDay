@@ -5,7 +5,7 @@ import { prisma } from "@/lib/prisma";
 
 const SESSION_COOKIE = "cat_session";
 
-function getSecret() {
+export function getAuthSecret() {
   const secret = process.env.APP_SESSION_SECRET;
   if (secret) return secret;
   if (process.env.NODE_ENV === "production") {
@@ -15,11 +15,11 @@ function getSecret() {
 }
 
 function sign(payload: string) {
-  return crypto.createHmac("sha256", getSecret()).update(payload).digest("hex");
+  return crypto.createHmac("sha256", getAuthSecret()).update(payload).digest("hex");
 }
 
 function createSessionStateKey(password: string) {
-  return crypto.createHmac("sha256", getSecret()).update(`session:${password}`).digest("hex");
+  return crypto.createHmac("sha256", getAuthSecret()).update(`session:${password}`).digest("hex");
 }
 
 export function createSessionToken(userId: string, password: string) {

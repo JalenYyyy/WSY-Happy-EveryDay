@@ -1,5 +1,5 @@
 import { requireApiUser } from "@/lib/auth";
-import { readGeneratedFile } from "@/lib/pi/file-store";
+import { readGeneratedFile, triggerPiFileMaintenance } from "@/lib/pi/file-store";
 import path from "path";
 
 const MIME_BY_EXT: Record<string, string> = {
@@ -17,9 +17,15 @@ export async function GET(
   _req: Request,
   { params }: { params: Promise<{ id: string; path: string[] }> },
 ) {
-  try {
-    await requireApiUser();
-  } catch {
+  const user = await (async () => {
+    try {
+      return await requireApiUser();
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!user) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }
 
@@ -28,10 +34,11 @@ export async function GET(
 
   let buffer: Buffer;
   try {
-    buffer = await readGeneratedFile(id, filename);
+    buffer = await readGeneratedFile(id, user.id, filename);
   } catch {
     return Response.json({ error: "File not found" }, { status: 404 });
   }
+  triggerPiFileMaintenance();
 
   const ext = path.extname(filename).toLowerCase();
   const contentType = MIME_BY_EXT[ext] ?? "application/octet-stream";

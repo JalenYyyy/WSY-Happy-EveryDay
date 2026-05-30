@@ -13,9 +13,15 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  try {
-    await requireApiUser();
-  } catch {
+  const user = await (async () => {
+    try {
+      return await requireApiUser();
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!user) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }
 
@@ -53,7 +59,7 @@ export async function POST(
       }
 
       // Run the agent prompt within the AsyncLocalStorage context so tools can access session id
-      asyncSession.run({ sessionId: id }, () => {
+      asyncSession.run({ sessionId: id, userId: user.id }, () => {
         const unsubscribe = agent.subscribe(async (event) => {
           if (event.type === "message_update") {
             const ae = event.assistantMessageEvent;

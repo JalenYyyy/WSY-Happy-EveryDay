@@ -1,6 +1,6 @@
 import { requireApiUser } from "@/lib/auth";
 import { getSession } from "@/lib/pi/agent-manager";
-import { saveUploadedFile } from "@/lib/pi/file-store";
+import { saveUploadedFile, triggerPiFileMaintenance } from "@/lib/pi/file-store";
 
 const MAX_UPLOAD_BYTES = 20 * 1024 * 1024; // 20 MB per file
 
@@ -8,9 +8,15 @@ export async function POST(
   req: Request,
   { params }: { params: Promise<{ id: string }> },
 ) {
-  try {
-    await requireApiUser();
-  } catch {
+  const user = await (async () => {
+    try {
+      return await requireApiUser();
+    } catch {
+      return null;
+    }
+  })();
+
+  if (!user) {
     return Response.json({ error: "未登录" }, { status: 401 });
   }
 
@@ -27,7 +33,14 @@ export async function POST(
     return Response.json({ error: "Invalid form data" }, { status: 400 });
   }
 
-  const results = [];
+  const results: Array<{
+    id: string;
+    name: string;
+    mimeType: string;
+    size: number;
+    expiresAt: string;
+    textContent?: string;
+  }> = [];
   const fileEntries = formData.getAll("file");
 
   for (const entry of fileEntries) {
@@ -41,16 +54,18 @@ export async function POST(
     }
 
     const buffer = Buffer.from(await entry.arrayBuffer());
-    const uploaded = await saveUploadedFile(id, entry.name, buffer, entry.type || undefined);
+    const uploaded = await saveUploadedFile(id, user.id, entry.name, buffer, entry.type || undefined);
 
     results.push({
       id: uploaded.id,
       name: uploaded.originalName,
       mimeType: uploaded.mimeType,
       size: uploaded.size,
+      expiresAt: uploaded.expiresAt,
       textContent: uploaded.textContent,
     });
   }
 
+  triggerPiFileMaintenance();
   return Response.json({ files: results });
 }

@@ -9,6 +9,7 @@
     "start": "next start",
     "lint": "tsc --noEmit",
     "smoke:login-throttle": "tsx scripts/smoke-login-throttle.ts",
+    "pi:cleanup-files": "tsx scripts/pi-file-maintenance.ts",
     "db:push": "prisma generate && tsx prisma/init-db.ts",
     "db:seed": "tsx prisma/seed.ts",
     "db:reset": "prisma generate && tsx prisma/init-db.ts --reset && tsx prisma/seed.ts"

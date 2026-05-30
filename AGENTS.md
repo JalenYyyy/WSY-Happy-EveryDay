@@ -14,7 +14,7 @@
 ## Runbook
 
 - Install: `npm install`
-- Local startup: `npm run db:push`, `npm run db:seed`, `npm run dev`
+- Local startup: 配置 `.env`（如需管理员协助重置密码，再补充 `ADMIN_RESET_PASSWORD`），然后执行 `npm run db:push`, `npm run db:seed`, `npm run dev`
 - Type-check: `npm run lint`
 - Production build: `npm run build`
 - Production start: `npm run start`

@@ -90,6 +90,10 @@ async function main() {
     where: { id: { in: users.map((user) => user.id) } },
   });
 
+  await prisma.passwordRecovery.deleteMany({
+    where: { userId: { in: dbUsers.map((user) => user.id) } },
+  });
+
   for (const cat of cats) {
     const existingCat =
       (await prisma.cat.findUnique({ where: { name: cat.name } })) ||

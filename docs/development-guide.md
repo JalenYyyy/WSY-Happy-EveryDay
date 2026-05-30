@@ -21,6 +21,8 @@ npm run dev
 http://127.0.0.1:3000
 ```
 
+说明：仓库已在 `next.config.ts` 中固定 `turbopack.root` 为当前项目目录，避免上级目录存在额外 `package-lock.json` 时让开发服务错误解析 Tailwind 等依赖。
+
 ## 3. 默认账号
 
 ```text
@@ -28,7 +30,7 @@ user1 / cat123
 user2 / cat123
 ```
 
-说明：用户可以在个人资料里修改用户名、头像和简介；密码修改只在登录页完成。登录页会读取数据库中的最新用户列表，并对连续输错密码做基础节流。
+说明：用户可以在个人资料里修改用户名、头像和简介，并为忘记密码预生成恢复码；密码修改和恢复码重置都在登录页完成。登录页会读取数据库中的最新用户列表，并对连续输错密码做基础节流。
 默认账号现在由 [prisma/seed.ts](prisma/seed.ts) 按固定 id 维护：`user1 -> default-user-1`、`user2 -> default-user-2`。这样重复执行 seed 时不会因为用户名变动而额外生成新的默认账号。
 
 ## 4. 环境变量
@@ -38,13 +40,14 @@ user2 / cat123
 ```bash
 DATABASE_URL="file:./dev.db"
 APP_SESSION_SECRET="local-dev-secret-change-before-production"
+ADMIN_RESET_PASSWORD=""
 LLM_BASE_URL="https://api.deepseek.com"
 LLM_API_KEY=""
 LLM_MODEL="deepseek-v4-pro"
 TAVILY_API_KEY=""   # Pi Agent 联网搜索，从 app.tavily.com 获取
 ```
 
-说明：开发环境未配置 `APP_SESSION_SECRET` 时会使用本地默认值；生产环境现在会直接报错并拒绝启动。默认账号密码会在 seed 或首次成功登录后写入为哈希值。
+说明：开发环境未配置 `APP_SESSION_SECRET` 时会使用本地默认值；生产环境现在会直接报错并拒绝启动。`ADMIN_RESET_PASSWORD` 仅用于忘记密码时的管理员协助重置，不参与正常登录。默认账号密码会在 seed 或首次成功登录后写入为哈希值。
 上传限制：头像和聊天图片只接受 png、jpg、webp、gif，服务端会按文件头校验真实格式，不接受伪装扩展名或伪装 MIME 的文件。
 
 DeepSeek 示例：
@@ -64,6 +67,7 @@ npm run dev      # 开发服务
 npm run build    # 生产构建
 npm run start    # 启动生产服务
 npm run lint     # TypeScript 类型检查
+npm run pi:cleanup-files # 清理 Pi Agent 过期/孤儿文件
 npm run db:push  # 初始化/同步 SQLite 表
 npm run db:seed  # 写入默认用户和猫咪
 npm run db:reset # 重置数据库并重新 seed
@@ -170,6 +174,15 @@ npm run db:reset
 - 修改密码后，旧登录态应立即失效，需要重新登录。
 - 个人资料弹窗不再承担改密码职责。
 
+### 忘记密码恢复码
+
+- 登录后可在个人资料弹窗生成恢复码。
+- 恢复码明文只会展示一次，重新生成后旧恢复码失效。
+- 登录页可为当前选中用户输入恢复码并重置密码。
+- 若 `.env` 配置了 `ADMIN_RESET_PASSWORD`，登录页也可切换为输入管理员密码来重置当前用户密码。
+- 恢复成功后，旧登录态会立即失效，且该恢复码不可再次使用。
+- 同一来源对同一用户名连续输错 5 次恢复码后，第 6 次会返回限流错误；等待约 10 分钟后恢复。
+
 ### 删除猫咪
 
 - 删除入口位于危险操作区。
@@ -194,7 +207,8 @@ npm run db:reset
 
 - 给猫咪发送图片后，会生成一条用户图片消息和一条猫咪回复。
 - 同一张图片会自动进入该猫咪的猫圈列表。
-- 猫圈卡片应显示图片、猫咪文案和时间。
+- 电子相册应以按时间倒序的照片墙展示所有照片，并弱化文字，只保留时间信息。
+- 点击任意照片后，应能打开以照片为主的沉浸式大图预览，并支持上一张 / 下一张切换。
 
 ### 悄悄话留言卡
 
@@ -208,10 +222,11 @@ npm run db:reset
 - 未登录直接访问 `/agent`，应跳转 `/login`。
 - 登录后访问 `/agent`，页面正常渲染，侧边栏有「New Chat」和会话列表。
 - 发送消息后，消息气泡出现在右侧，Assistant 回复从左侧流式渲染。
-- 调用工具时，消息下方出现可折叠的工具卡片，显示工具名、参数和结果。
+- 调用工具时，消息下方显示“处理思路”摘要卡片，而不是原始命令明细。
 - 点击「停止生成」按钮后，流式输出立即停止，按钮切换回发送状态。
 - 新建多个会话，切换会话后，消息历史独立、互不干扰。
 - 删除会话（垃圾桶图标）后，会话从侧边栏移除。
+- 上传文件默认保留 24 小时，生成文件默认保留 7 天；执行 `npm run pi:cleanup-files` 后，过期文件和孤儿文件应被清理。
 - 点击侧边栏「←」按钮，返回猫咪聊天首页。
 - 猫咪聊天主界面侧边栏用户信息区应显示 Bot 图标按钮，点击跳转 `/agent`。
 
@@ -235,6 +250,7 @@ npm run db:reset
 - 当前没有自动化测试框架，依赖手动/API 冒烟测试。
 - Pi Agent 会话存储在进程内存，服务重启后全部丢失——当前是 MVP 行为，不是 bug。
 - Pi Agent 的 `bash` 工具没有命令白名单，仅适合本地受信环境使用，不应暴露到公网。
+- Pi Agent 上传/生成文件默认存放在 `tmp/pi/`，依赖 `AgentFile` 元数据表和 `npm run pi:cleanup-files` 做定期清理。
 - `@earendil-works/pi-ai` 重导出了 TypeBox 的 `Type`，工具参数定义应从该包引入，不要单独安装 `@sinclair/typebox`（版本可能不兼容）。
 
 ## 10. 上线前检查清单

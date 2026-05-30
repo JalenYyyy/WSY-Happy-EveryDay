@@ -6,10 +6,13 @@ import {
   BellDot,
   Bot,
   Camera,
+  ChevronLeft,
+  ChevronRight,
   ChevronDown,
   ChevronUp,
   Check,
   Images,
+  KeyRound,
   LogOut,
   Menu,
   MessageCircle,
@@ -100,6 +103,13 @@ type WhisperOverview = {
     active: WhisperCard[];
   };
 };
+type RecoveryStatus = {
+  configured: boolean;
+  expired: boolean;
+  codeSuffix: string | null;
+  expiresAt: string | null;
+  generatedAt: string | null;
+};
 
 type Props = {
   currentUser: User;
@@ -179,7 +189,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
   const [sending, setSending] = useState(false);
   const [notice, setNotice] = useState("");
   const [activePanel, setActivePanel] = useState<"chat" | "moments" | "whispers">("chat");
-  const [selectedMoment, setSelectedMoment] = useState<CatMoment | null>(null);
+  const [selectedMomentId, setSelectedMomentId] = useState("");
   const [momentDeleteTarget, setMomentDeleteTarget] = useState<CatMoment | null>(null);
   const [deletingMomentId, setDeletingMomentId] = useState("");
   const [settingsOpen, setSettingsOpen] = useState(false);
@@ -201,6 +211,14 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
   const selectedCatProfile = useMemo(
     () => selectedCat?.nicknames.find((item) => item.userId === sessionUser.id) || null,
     [selectedCat, sessionUser.id],
+  );
+  const selectedMoment = useMemo(
+    () => moments.find((moment) => moment.id === selectedMomentId) || null,
+    [moments, selectedMomentId],
+  );
+  const selectedMomentIndex = useMemo(
+    () => (selectedMoment ? moments.findIndex((moment) => moment.id === selectedMoment.id) : -1),
+    [moments, selectedMoment],
   );
   const whisperPartner = whisperOverview.partner;
 
@@ -225,7 +243,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
       .then((data) => setMoments(data.moments || []))
       .catch((error: unknown) => {
         setMoments([]);
-        setNotice(error instanceof Error ? error.message : "加载猫圈失败，请稍后重试");
+        setNotice(error instanceof Error ? error.message : "加载电子相册失败，请稍后重试");
       })
       .finally(() => setLoadingMoments(false));
   }, [selectedCat?.id]);
@@ -388,8 +406,8 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
 
     setMoments((previous) => previous.filter((item) => item.id !== data.deletedMomentId));
     setMomentDeleteTarget((previous) => (previous?.id === data.deletedMomentId ? null : previous));
-    setSelectedMoment((previous) => (previous?.id === data.deletedMomentId ? null : previous));
-    setNotice("这条猫圈内容已移出电子相册。");
+    setSelectedMomentId((previous) => (previous === data.deletedMomentId ? "" : previous));
+    setNotice("这张照片已从电子相册移除。");
   }
 
   async function sendMessage(event: React.FormEvent) {
@@ -490,9 +508,9 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
         ...data.messages!,
       ]);
       if (data.usedFallback) {
-        setNotice("模型暂时不可用，已使用本地备用回复。图片已收进猫咪猫圈。");
+        setNotice("模型暂时不可用，已使用本地备用回复。图片已收进电子相册。");
       } else {
-        setNotice("图片已发给猫咪，也收进它的猫圈了。");
+        setNotice("图片已发给猫咪，也收进它的电子相册了。");
       }
       await Promise.all([refreshCats(), refreshMoments()]);
     } catch (error) {
@@ -759,7 +777,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
                     onClick={() => setActivePanel("moments")}
                     className={clsx("rounded-full px-3 py-1.5 text-xs font-medium", activePanel === "moments" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500")}
                   >
-                    猫圈
+                    电子相册
                   </button>
                 </div>
                 <button
@@ -785,7 +803,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
                     onClick={() => setActivePanel("moments")}
                     className={clsx("flex-1 rounded-full px-3 py-2 text-xs font-medium", activePanel === "moments" ? "bg-white text-stone-900 shadow-sm" : "text-stone-500")}
                   >
-                    猫圈
+                    电子相册
                   </button>
                 </div>
 
@@ -817,7 +835,7 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
                     moments={moments}
                     loading={loadingMoments}
                     deletingMomentId={deletingMomentId}
-                    onOpenMoment={setSelectedMoment}
+                    onOpenMoment={(moment) => setSelectedMomentId(moment.id)}
                     onDeleteMoment={deleteMoment}
                   />
                 )}
@@ -942,9 +960,25 @@ export default function ChatApp({ currentUser, initialCats, users, initialWhispe
         <MomentPreviewDialog
           cat={selectedCat}
           moment={selectedMoment}
+          currentIndex={selectedMomentIndex}
+          totalCount={moments.length}
+          hasPrevious={selectedMomentIndex > 0}
+          hasNext={selectedMomentIndex >= 0 && selectedMomentIndex < moments.length - 1}
           deleting={deletingMomentId === selectedMoment.id}
-          onClose={() => setSelectedMoment(null)}
+          onClose={() => setSelectedMomentId("")}
           onDelete={() => void deleteMoment(selectedMoment)}
+          onPrevious={() => {
+            const previousMoment = moments[selectedMomentIndex - 1];
+            if (previousMoment) {
+              setSelectedMomentId(previousMoment.id);
+            }
+          }}
+          onNext={() => {
+            const nextMoment = moments[selectedMomentIndex + 1];
+            if (nextMoment) {
+              setSelectedMomentId(nextMoment.id);
+            }
+          }}
         />
       ) : null}
 
@@ -1528,50 +1562,75 @@ function MomentsPanel({
   onDeleteMoment: (moment: CatMoment) => void;
 }) {
   if (loading) {
-    return <p className="text-center text-sm text-stone-400">正在打开{cat.name}的猫圈...</p>;
+    return <p className="text-center text-sm text-stone-400">正在打开{cat.name}的电子相册...</p>;
   }
 
   if (moments.length === 0) {
     return (
       <div className="mx-auto mt-16 max-w-sm text-center text-stone-500">
         <Images className="mx-auto mb-3 text-stone-300" size={38} />
-        <p className="text-sm">还没有猫圈内容。给{cat.name}发一张图片，它会把自己的心情和时间一起收进电子相册。</p>
+        <p className="text-sm">还没有相册内容。给{cat.name}发一张图片，它会自动收进电子相册。</p>
       </div>
     );
   }
 
+  const latestMoment = moments[0];
+
   return (
-    <div className="mx-auto max-w-3xl space-y-5">
-      {moments.map((moment) => (
-        <article key={moment.id} className="rounded-[28px] border border-stone-200/80 bg-white/90 p-4 shadow-sm backdrop-blur-sm">
-          <div className="mb-3 flex items-start gap-3">
-            <Avatar cat={cat} size={44} />
-            <div className="min-w-0 flex-1">
-              <div className="flex items-start justify-between gap-3">
-                <div>
-                  <p className="text-sm font-semibold text-stone-800">{cat.name}</p>
-                  <p className="mt-0.5 text-xs text-stone-400">发布到猫圈 · {formatDateTime(moment.createdAt)}</p>
-                </div>
-                <button
-                  type="button"
-                  disabled={deletingMomentId === moment.id}
-                  onClick={() => onDeleteMoment(moment)}
-                  className="rounded-full p-2 text-stone-400 transition hover:bg-stone-100 hover:text-red-500 disabled:opacity-40"
-                  title="删除这条猫圈"
-                >
-                  <Trash2 size={16} />
-                </button>
-              </div>
-              <p className="mt-2 whitespace-pre-wrap text-sm leading-6 text-stone-700">{moment.caption}</p>
+    <div className="mx-auto max-w-6xl space-y-5">
+      <section className="rounded-[28px] border border-stone-200/80 bg-white/90 p-5 shadow-sm backdrop-blur-sm">
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-end sm:justify-between">
+          <div>
+            <p className="text-xs font-medium uppercase tracking-[0.22em] text-stone-400">电子相册</p>
+            <h3 className="mt-2 text-xl font-semibold text-stone-900">{cat.name} 的回忆照片墙</h3>
+            <p className="mt-2 text-sm leading-6 text-stone-500">按时间倒序收好每一张照片，尽量弱化文字，让回忆的重点回到照片本身。</p>
+          </div>
+          <div className="flex gap-3">
+            <div className="rounded-[24px] bg-stone-100 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">照片数</p>
+              <p className="mt-1 text-lg font-semibold text-stone-800">{moments.length}</p>
+            </div>
+            <div className="rounded-[24px] bg-stone-100 px-4 py-3">
+              <p className="text-[11px] uppercase tracking-[0.18em] text-stone-400">最近收录</p>
+              <p className="mt-1 text-sm font-semibold text-stone-800">{latestMoment ? formatMomentDateTime(latestMoment.createdAt) : "--"}</p>
             </div>
           </div>
-          <button type="button" onClick={() => onOpenMoment(moment)} className="block w-full overflow-hidden rounded-[24px] bg-stone-100 text-left">
-            <div className="aspect-[4/3] overflow-hidden">
-              <Image src={moment.imageUrl} alt={`${cat.name}的猫圈图片`} width={960} height={720} className="h-full w-full object-cover transition duration-300 hover:scale-[1.02]" />
-            </div>
-          </button>
-        </article>
-      ))}
+        </div>
+      </section>
+
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-3">
+        {moments.map((moment) => (
+          <article key={moment.id} className="group relative overflow-hidden rounded-[28px] border border-stone-200/80 bg-white shadow-sm">
+            <button
+              type="button"
+              onClick={() => onOpenMoment(moment)}
+              className="block w-full text-left"
+            >
+              <div className="relative aspect-[4/5] overflow-hidden bg-stone-100">
+                <Image
+                  src={moment.imageUrl}
+                  alt={`${cat.name}的电子相册照片`}
+                  width={960}
+                  height={1200}
+                  className="h-full w-full object-cover transition duration-500 group-hover:scale-[1.04]"
+                />
+                <div className="absolute inset-x-0 bottom-0 bg-gradient-to-t from-stone-950/80 via-stone-950/15 to-transparent px-4 pb-4 pt-10 text-white">
+                  <p className="text-xs font-medium text-white/80">{formatMomentDateTime(moment.createdAt)}</p>
+                </div>
+              </div>
+            </button>
+            <button
+              type="button"
+              disabled={deletingMomentId === moment.id}
+              onClick={() => onDeleteMoment(moment)}
+              className="absolute right-3 top-3 rounded-full bg-white/90 p-2 text-stone-500 shadow-sm transition hover:bg-white hover:text-red-500 disabled:opacity-40"
+              title="删除这张照片"
+            >
+              <Trash2 size={16} />
+            </button>
+          </article>
+        ))}
+      </div>
     </div>
   );
 }
@@ -1579,51 +1638,87 @@ function MomentsPanel({
 function MomentPreviewDialog({
   cat,
   moment,
+  currentIndex,
+  totalCount,
+  hasPrevious,
+  hasNext,
   deleting,
   onClose,
   onDelete,
+  onPrevious,
+  onNext,
 }: {
   cat: Cat;
   moment: CatMoment;
+  currentIndex: number;
+  totalCount: number;
+  hasPrevious: boolean;
+  hasNext: boolean;
   deleting: boolean;
   onClose: () => void;
   onDelete: () => void;
+  onPrevious: () => void;
+  onNext: () => void;
 }) {
+  useEffect(() => {
+    function handleKeyDown(event: KeyboardEvent) {
+      if (event.key === "Escape") {
+        onClose();
+      } else if (event.key === "ArrowLeft" && hasPrevious) {
+        onPrevious();
+      } else if (event.key === "ArrowRight" && hasNext) {
+        onNext();
+      }
+    }
+
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
+  }, [hasNext, hasPrevious, onClose, onNext, onPrevious]);
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/70 p-4 backdrop-blur-sm">
-      <div className="flex max-h-[92vh] w-full max-w-5xl flex-col overflow-hidden rounded-[32px] bg-[#fbfaf8] shadow-soft lg:flex-row">
-        <div className="relative flex-1 bg-stone-950">
-          <Image src={moment.imageUrl} alt={`${cat.name}的猫圈图片大图`} width={1400} height={1100} className="h-full max-h-[70vh] w-full object-contain lg:max-h-[92vh]" />
-          <button type="button" onClick={onClose} className="absolute right-4 top-4 rounded-full bg-white/90 p-2 text-stone-700 hover:bg-white">
+      <div className="relative flex max-h-[92vh] w-full max-w-6xl items-center justify-center overflow-hidden rounded-[32px] bg-stone-950 shadow-soft">
+        <Image src={moment.imageUrl} alt={`${cat.name}的电子相册大图`} width={1600} height={1200} className="h-full max-h-[92vh] w-full object-contain" />
+        <div className="pointer-events-none absolute left-4 top-4 rounded-full bg-stone-950/70 px-3 py-1.5 text-xs font-medium text-white">
+          {formatMomentDateTime(moment.createdAt)}
+        </div>
+        <div className="pointer-events-none absolute bottom-4 left-4 rounded-full bg-stone-950/70 px-3 py-1.5 text-xs font-medium text-white">
+          第 {currentIndex + 1} / {totalCount} 张
+        </div>
+        {hasPrevious ? (
+          <button
+            type="button"
+            onClick={onPrevious}
+            className="absolute left-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-stone-700 shadow-sm transition hover:bg-white"
+            title="上一张"
+          >
+            <ChevronLeft size={20} />
+          </button>
+        ) : null}
+        {hasNext ? (
+          <button
+            type="button"
+            onClick={onNext}
+            className="absolute right-4 top-1/2 flex h-11 w-11 -translate-y-1/2 items-center justify-center rounded-full bg-white/90 text-stone-700 shadow-sm transition hover:bg-white"
+            title="下一张"
+          >
+            <ChevronRight size={20} />
+          </button>
+        ) : null}
+        <div className="absolute right-4 top-4 flex gap-2">
+          <button
+            type="button"
+            disabled={deleting}
+            onClick={onDelete}
+            className="flex h-11 items-center justify-center gap-2 rounded-full bg-red-600 px-4 text-sm font-semibold text-white disabled:opacity-40"
+          >
+            <Trash2 size={16} />
+            {deleting ? "删除中..." : "删除"}
+          </button>
+          <button type="button" onClick={onClose} className="rounded-full bg-white/90 p-2 text-stone-700 hover:bg-white">
             <X size={20} />
           </button>
         </div>
-        <aside className="flex w-full max-w-md flex-col border-t border-stone-200 lg:border-l lg:border-t-0">
-          <div className="flex items-center gap-3 border-b border-stone-200 px-5 py-4">
-            <Avatar cat={cat} size={42} />
-            <div className="min-w-0 flex-1">
-              <p className="text-sm font-semibold text-stone-800">{cat.name}的猫圈</p>
-              <p className="text-xs text-stone-400">{formatDateTime(moment.createdAt)}</p>
-            </div>
-          </div>
-          <div className="scrollbar-soft flex-1 space-y-4 overflow-y-auto p-5">
-            <p className="whitespace-pre-wrap text-sm leading-7 text-stone-700">{moment.caption}</p>
-          </div>
-          <div className="flex gap-2 border-t border-stone-200 p-4">
-            <button
-              type="button"
-              disabled={deleting}
-              onClick={onDelete}
-              className="flex h-11 flex-1 items-center justify-center gap-2 rounded-2xl bg-red-600 text-sm font-semibold text-white disabled:opacity-40"
-            >
-              <Trash2 size={16} />
-              {deleting ? "删除中..." : "删除这条猫圈"}
-            </button>
-            <button type="button" onClick={onClose} className="h-11 rounded-2xl bg-white px-5 text-sm font-semibold text-stone-600">
-              关闭
-            </button>
-          </div>
-        </aside>
       </div>
     </div>
   );
@@ -1662,7 +1757,7 @@ function MomentDeleteDialog({
             </div>
             <div className="space-y-2 px-4 py-4">
               <p className="text-xs font-medium uppercase tracking-[0.2em] text-stone-400">即将删除</p>
-              <p className="text-sm font-semibold text-stone-800">{cat.name}的猫圈照片</p>
+              <p className="text-sm font-semibold text-stone-800">{cat.name}的相册照片</p>
               <p className="whitespace-pre-wrap text-sm leading-6 text-stone-600">{moment.caption || "这张图片没有额外文案。"}</p>
             </div>
           </div>
@@ -1718,6 +1813,12 @@ function UserProfileDialog({
   const [avatarPreviewUrl, setAvatarPreviewUrl] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
+  const [recoveryStatus, setRecoveryStatus] = useState<RecoveryStatus | null>(null);
+  const [recoveryLoading, setRecoveryLoading] = useState(true);
+  const [recoveryGenerating, setRecoveryGenerating] = useState(false);
+  const [recoveryError, setRecoveryError] = useState("");
+  const [recoveryNotice, setRecoveryNotice] = useState("");
+  const [newRecoveryCode, setNewRecoveryCode] = useState("");
   const displayedAvatarUrl = avatarPreviewUrl || avatarUrl;
 
   useEffect(() => {
@@ -1727,6 +1828,32 @@ function UserProfileDialog({
       }
     };
   }, [avatarPreviewUrl]);
+
+  useEffect(() => {
+    let canceled = false;
+    setRecoveryLoading(true);
+    fetch("/api/auth/recovery")
+      .then((response) => response.json().then((data) => ({ ok: response.ok, data })))
+      .then(({ ok, data }: { ok: boolean; data: { status?: RecoveryStatus; error?: string } }) => {
+        if (canceled) return;
+        if (!ok || !data.status) {
+          setRecoveryError(data.error || "读取恢复码状态失败");
+          setRecoveryLoading(false);
+          return;
+        }
+        setRecoveryStatus(data.status);
+        setRecoveryLoading(false);
+      })
+      .catch(() => {
+        if (canceled) return;
+        setRecoveryError("读取恢复码状态失败");
+        setRecoveryLoading(false);
+      });
+
+    return () => {
+      canceled = true;
+    };
+  }, []);
 
   function selectAvatar(file?: File) {
     if (!file) return;
@@ -1814,6 +1941,28 @@ function UserProfileDialog({
     onClose();
   }
 
+  async function generateRecoveryCode() {
+    if (recoveryGenerating) return;
+
+    setRecoveryGenerating(true);
+    setRecoveryError("");
+    setRecoveryNotice("");
+    setNewRecoveryCode("");
+
+    const response = await fetch("/api/auth/recovery", { method: "POST" });
+    const data = (await response.json()) as { recoveryCode?: string; status?: RecoveryStatus; error?: string };
+    setRecoveryGenerating(false);
+
+    if (!response.ok || !data.recoveryCode || !data.status) {
+      setRecoveryError(data.error || "生成恢复码失败");
+      return;
+    }
+
+    setRecoveryStatus(data.status);
+    setNewRecoveryCode(data.recoveryCode);
+    setRecoveryNotice("新的恢复码已生成，只会显示这一次，请马上离线保存。");
+  }
+
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-stone-900/20 p-4 backdrop-blur-sm">
       <form onSubmit={submit} className="flex w-full max-w-md flex-col rounded-[28px] bg-[#fbfaf8] shadow-soft">
@@ -1840,8 +1989,43 @@ function UserProfileDialog({
           <TextField label="登录用户名" value={form.username} onChange={(value) => setForm((previous) => ({ ...previous, username: value }))} />
           <TextField label="显示名称" value={form.name} onChange={(value) => setForm((previous) => ({ ...previous, name: value }))} />
           <TextArea label="个人简介" value={form.bio} onChange={(value) => setForm((previous) => ({ ...previous, bio: value }))} rows={3} />
+          <section className="rounded-2xl border border-stone-200 bg-white px-4 py-4">
+            <div className="flex items-start justify-between gap-3">
+              <div>
+                <p className="text-sm font-semibold text-stone-700">忘记密码恢复码</p>
+                <p className="mt-1 text-xs leading-5 text-stone-500">登录页可用恢复码重置密码；恢复成功后旧登录态会自动失效。</p>
+              </div>
+              <button
+                type="button"
+                onClick={generateRecoveryCode}
+                disabled={recoveryGenerating}
+                className="inline-flex h-10 shrink-0 items-center gap-2 rounded-2xl bg-ink px-4 text-sm font-semibold text-white disabled:opacity-50"
+              >
+                <KeyRound size={16} />
+                {recoveryGenerating ? "生成中..." : recoveryStatus?.configured ? "重新生成" : "生成恢复码"}
+              </button>
+            </div>
+
+            {recoveryLoading ? <p className="mt-3 text-xs text-stone-400">正在读取恢复码状态...</p> : null}
+            {!recoveryLoading && recoveryStatus?.configured ? (
+              <div className="mt-3 space-y-1 text-xs text-stone-500">
+                <p>{recoveryStatus.expired ? "当前恢复码已过期，请重新生成。" : `当前恢复码已启用，尾号 ${recoveryStatus.codeSuffix}。`}</p>
+                {recoveryStatus.generatedAt ? <p>最近生成：{formatDateTime(recoveryStatus.generatedAt)}</p> : null}
+                {recoveryStatus.expiresAt ? <p>过期时间：{formatDateTime(recoveryStatus.expiresAt)}</p> : null}
+              </div>
+            ) : null}
+            {!recoveryLoading && !recoveryStatus?.configured ? <p className="mt-3 text-xs text-stone-400">还没有恢复码。建议现在先生成一组并妥善保存。</p> : null}
+            {newRecoveryCode ? (
+              <div className="mt-3 rounded-2xl bg-amber-50 px-4 py-3 text-sm text-amber-900">
+                <p className="font-medium">请立刻保存下面这组恢复码：</p>
+                <p className="mt-2 font-mono text-base tracking-[0.28em]">{newRecoveryCode}</p>
+              </div>
+            ) : null}
+            {recoveryNotice ? <p className="mt-3 rounded-2xl bg-emerald-50 px-4 py-3 text-sm text-emerald-700">{recoveryNotice}</p> : null}
+            {recoveryError ? <p className="mt-3 rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{recoveryError}</p> : null}
+          </section>
           <p className="rounded-2xl bg-stone-100 px-4 py-3 text-xs leading-5 text-stone-500">
-            密码修改已移到登录页处理。这里仅修改你自己的头像、名称、用户名和简介。
+            密码修改已移到登录页处理；忘记密码时可使用这里生成的恢复码自助重置。
           </p>
           {error ? <p className="rounded-2xl bg-red-50 px-4 py-3 text-sm text-red-600">{error}</p> : null}
         </div>
@@ -2354,6 +2538,16 @@ function toDateTimeInputValue(value: string | Date) {
 
 function formatDateTime(value: string) {
   return new Date(value).toLocaleString("zh-CN", {
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
+function formatMomentDateTime(value: string) {
+  return new Date(value).toLocaleString("zh-CN", {
+    year: "numeric",
     month: "2-digit",
     day: "2-digit",
     hour: "2-digit",

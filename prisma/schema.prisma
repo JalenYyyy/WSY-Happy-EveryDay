@@ -15,8 +15,10 @@ model User {
   bio                    String         @default("")
   password               String
   createdAt              DateTime       @default(now())
+  agentFiles             AgentFile[]
   nicknames              CatUserName[]
   messages               Message[]
+  passwordRecovery       PasswordRecovery?
   receivedWhispers       WhisperCard[]  @relation("WhisperCardRecipient")
   sentWhispers           WhisperCard[]  @relation("WhisperCardSender")
   receivedWhisperReplies WhisperReply[] @relation("WhisperReplyRecipient")
@@ -96,11 +98,45 @@ model AppSetting {
   updatedAt DateTime @updatedAt
 }
 
+model PasswordRecovery {
+  id         String   @id @default(cuid())
+  userId     String   @unique(map: "sqlite_autoindex_PasswordRecovery_2")
+  codeHash   String
+  codeSuffix String
+  expiresAt  DateTime
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+  user       User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
 model LoginThrottle {
   key           String @id
   count         Int
   firstFailedAt Int
   lockedUntil   Int?
+}
+
+model AgentFile {
+  id               String   @id @default(cuid())
+  sessionId        String
+  userId           String
+  kind             String
+  originalName     String
+  storedName       String
+  mimeType         String
+  size             Int
+  storagePath      String   @unique(map: "sqlite_autoindex_AgentFile_2")
+  downloadPath     String?
+  status           String   @default("ACTIVE")
+  expiresAt        DateTime
+  lastDownloadedAt DateTime?
+  createdAt        DateTime @default(now())
+  updatedAt        DateTime @updatedAt
+  user             User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([sessionId, kind, storedName])
+  @@index([sessionId, status, expiresAt])
+  @@index([userId, status, expiresAt])
 }
 
 model WhisperCard {
